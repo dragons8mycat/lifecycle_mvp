@@ -29,7 +29,8 @@ jobs:
           
       - name: Build
         run: |
-          # Updated --base to match your preferred URL: /lifecycle_mvp/
+          # The --base flag ensures assets load correctly from the subfolder
+          # CI=false prevents warnings from being treated as errors
           CI=false npm run build -- --base=/lifecycle_mvp/
           
       - name: Deploy
