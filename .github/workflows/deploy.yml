@@ -6,9 +6,11 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     env:
+      # This environment variable tells GitHub to use Node 24 for the action runners
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
       
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -18,11 +20,9 @@ jobs:
       - name: Install and Build
         run: |
           npm install
-          # Skip linting during build to prevent "Exit Code 1" on warnings
-          npm run build -- --emptyOutDir
-        env:
-          VITE_SKIP_LINT: true
-
+          # We set CI=false to prevent lint warnings from stopping the build in production
+          CI=false npm run build
+          
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
