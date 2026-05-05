@@ -13,7 +13,6 @@ jobs:
     permissions:
       contents: write
     env:
-      # This fixes the Node deprecation warning from your screenshot
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout
@@ -29,7 +28,9 @@ jobs:
         run: npm install
           
       - name: Build
-        run: CI=false npm run build -- --base=/lifecycle_mvp/
+        run: |
+          # Updated --base to match your preferred URL: /lifecycle_mvp/
+          CI=false npm run build -- --base=/lifecycle_mvp/
           
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
