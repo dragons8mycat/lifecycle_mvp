@@ -4,7 +4,6 @@ import {
   getFirestore, 
   collection, 
   doc, 
-  setDoc, 
   onSnapshot, 
   query,
   writeBatch
@@ -23,17 +22,15 @@ import {
   BarChart3, 
   Search, 
   ChevronRight, 
-  LayoutGrid, 
   CheckCircle2, 
   Save, 
   ArrowLeft,
   X,
-  Edit3,
   RefreshCw,
   Info,
   Loader2,
-  FileSpreadsheet,
-  AlertTriangle
+  AlertTriangle,
+  Layers
 } from 'lucide-react';
 
 // --- YOUR FIREBASE CONFIGURATION ---
@@ -78,9 +75,6 @@ const INDUSTRY_CONFIG = {
     'Post-Construction Monitoring'
   ]
 };
-
-const DATA_GROUPS = ['Firmographics', 'Technographics', 'Intent', 'Contact', 'Geospatial', 'Environmental'];
-const BUSINESS_UNITS = ['Commercial', 'Marketing', 'Product', 'Customer Success', 'GIS Team'];
 
 // --- HELPERS ---
 const parseCSV = (text) => {
@@ -168,6 +162,39 @@ const OverviewPage = ({ onSelectRole, datasets }) => (
         </div>
       </div>
     </div>
+
+    <div className="max-w-6xl mx-auto py-16 px-8 grid grid-cols-1 md:grid-cols-2 gap-16">
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold text-[#003057]">Centralized Asset Management</h2>
+        <p className="text-slate-600 leading-relaxed">
+          The Idox Lifecycle system aligns datasets with the unique workflows of Fibre and Housing development. We ensure commercial teams know exactly what data exists and how it should be used at every project milestone.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Badge variant="blue">Firestore Backed</Badge>
+          <Badge variant="blue">Idox Geospatial Standard</Badge>
+        </div>
+      </div>
+      <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+        <h3 className="font-bold mb-4 text-[#003057] flex items-center gap-2">
+          <Layers className="text-sky-500" size={20} /> System Information
+        </h3>
+        <p className="text-sm text-slate-500 mb-6 italic">About the Data User & Sales Workflows</p>
+        <div className="space-y-4 text-sm text-slate-600">
+          <div className="flex gap-3">
+            <CheckCircle2 className="text-emerald-500 shrink-0" size={18} />
+            <span>Dedicated Edit Mode for Data Users with commit confirmation.</span>
+          </div>
+          <div className="flex gap-3">
+            <CheckCircle2 className="text-emerald-500 shrink-0" size={18} />
+            <span>B/A/? Classification for quick data identification.</span>
+          </div>
+          <div className="flex gap-3">
+            <CheckCircle2 className="text-emerald-500 shrink-0" size={18} />
+            <span>Sticky Lifecycle headers for easy reference while scrolling.</span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 );
 
@@ -201,7 +228,7 @@ const SalesWorkflow = ({ datasets }) => {
         </div>
         <div className="bg-slate-100 p-1 rounded-xl ml-auto flex">
           <button onClick={() => setView('touchpoint')} className={`px-5 py-2 rounded-lg font-bold text-xs ${view === 'touchpoint' ? 'bg-white shadow-md text-[#003057]' : 'text-slate-500'}`}>Lifecycle View</button>
-          <button onClick={() => setView('role-led')} className={`px-5 py-2 rounded-lg font-bold text-xs ${view === 'role-led' ? 'bg-white shadow-md text-[#003057]' : 'text-slate-500'}`}>Simplified View</button>
+          <button onClick={() => setView('role-led')} className={`px-5 py-2 rounded-lg font-bold text-xs ${view === 'role-led' ? 'bg-white shadow-md text-[#003057]' : 'text-slate-500'}`}>Role-Led View</button>
         </div>
       </div>
 
@@ -217,7 +244,7 @@ const SalesWorkflow = ({ datasets }) => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.map(d => (
-                  <tr key={d.id} className="hover:bg-slate-50 transition-colors">
+                  <tr key={d.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4 border-r border-slate-100">
                       <div className="font-bold text-[#003057]">{d.name}</div>
                       <div className="text-[10px] text-slate-400 font-mono mt-1">{d.commonName}</div>
@@ -236,6 +263,10 @@ const SalesWorkflow = ({ datasets }) => {
               <Badge variant="blue">{d.group || 'General'}</Badge>
               <h3 className="font-bold text-[#003057] text-lg mt-2 mb-1">{d.name}</h3>
               <p className="text-xs text-slate-500 line-clamp-2">{d.description || 'No description available.'}</p>
+              <div className="pt-4 border-t border-slate-100 flex justify-between items-center text-[10px] font-black text-[#007CBA] tracking-widest">
+                <span>VIEW DETAILS</span>
+                <ChevronRight size={16} />
+              </div>
             </div>
           ))}
         </div>
@@ -245,7 +276,7 @@ const SalesWorkflow = ({ datasets }) => {
         <div className="fixed inset-0 z-50 flex items-center justify-end">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setSelected(null)} />
           <div className="relative w-full max-w-lg h-full bg-white shadow-2xl flex flex-col p-8">
-            <button onClick={() => setSelected(null)} className="ml-auto p-2 hover:bg-slate-100 rounded-full"><X /></button>
+            <button onClick={() => setSelected(null)} className="ml-auto p-2 hover:bg-slate-100 rounded-full transition-colors"><X /></button>
             <h2 className="text-2xl font-bold text-[#003057] mb-2">{selected.name}</h2>
             <p className="text-slate-600 mb-8">{selected.description}</p>
             <div className="space-y-2">
@@ -283,8 +314,8 @@ const DataWorkflow = ({ datasets, onSync }) => {
     <div className="space-y-6">
       <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-6">
         <div>
-          <h2 className="text-3xl font-bold text-[#003057]">Catalogue Sync</h2>
-          <p className="text-slate-500">Pull latest records from the master project workbook.</p>
+          <h2 className="text-3xl font-bold text-[#003057]">Data Administration</h2>
+          <p className="text-slate-500 mt-1">Refine dataset descriptions and framework mappings.</p>
         </div>
         <button 
           onClick={handleSync} 
@@ -303,39 +334,29 @@ const DataWorkflow = ({ datasets, onSync }) => {
       )}
 
       <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-          <h3 className="font-bold text-[#003057]">Active Catalogue ({datasets.length} records)</h3>
+        <div className="p-6 border-b border-slate-100">
+           <h3 className="font-bold text-[#003057]">Live Catalogue</h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
-              <tr>
-                <th className="px-6 py-4">Internal Name</th>
-                <th className="px-6 py-4">Common Name</th>
-                <th className="px-6 py-4">Group</th>
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+            <tr><th className="px-6 py-4">Internal Name</th><th className="px-6 py-4">Common Name</th><th className="px-6 py-4">Status</th></tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {datasets.map(d => (
+              <tr key={d.id} className="hover:bg-slate-50">
+                <td className="px-6 py-4 font-bold text-[#003057]">{d.name}</td>
+                <td className="px-6 py-4 text-xs font-mono">{d.commonName}</td>
+                <td className="px-6 py-4"><Badge>{d.status || 'Active'}</Badge></td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {datasets.length === 0 ? (
-                <tr>
-                  <td colSpan="3" className="px-6 py-12 text-center text-slate-400 italic">No datasets found. Please click "Sync Workbook" above.</td>
-                </tr>
-              ) : (
-                datasets.map(d => (
-                  <tr key={d.id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 font-bold text-[#003057]">{d.name}</td>
-                    <td className="px-6 py-4 text-slate-600 font-mono text-xs">{d.commonName}</td>
-                    <td className="px-6 py-4"><Badge variant="blue">{d.group || 'General'}</Badge></td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 };
+
+// --- MAIN APP COMPONENT ---
 
 export default function App() {
   const [role, setRole] = useState(null);
@@ -343,27 +364,47 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
 
+  // Authenticate
   useEffect(() => {
-    signInAnonymously(auth).catch(console.error);
+    const login = async () => {
+      try {
+        await signInAnonymously(auth);
+      } catch (e) {
+        console.error("Auth failed", e);
+      }
+    };
+    login();
     return onAuthStateChanged(auth, setUser);
   }, []);
 
+  // Listen to Firestore
   useEffect(() => {
-    if (!user) return;
+    if (!user || !db) return;
     const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'datasets'));
     const unsubscribe = onSnapshot(q, (snap) => {
-      setDatasets(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setDatasets(data);
       setLoading(false);
     }, (err) => {
-      console.error(err);
+      console.error("Firestore access error", err);
       setLoading(false);
     });
     return () => unsubscribe();
   }, [user]);
 
-  const handleSync = async () => {
+  const handleCommit = async (updated) => {
+    if (!db) return;
+    const batch = writeBatch(db);
+    updated.forEach(d => {
+      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'datasets', d.id);
+      batch.set(ref, d);
+    });
+    await batch.commit();
+  };
+
+  const handleSyncWorkbook = async () => {
     const SHEET_ID = '17MCi7epIJdxac0xzV2QTGGBUoL4Hi11zhzrbeRtRJXg';
-    const GID = '0'; // Default first sheet
+    const GID = '0';
     const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
     
     const response = await fetch(url);
@@ -375,17 +416,14 @@ export default function App() {
 
     const batch = writeBatch(db);
     rows.forEach((row, i) => {
-      // Mapping based on common header names
-      const name = row.Name || row.name || row.Dataset || row.dataset;
+      const name = row.Name || row.name || row.Dataset;
       if (!name) return;
       
       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'datasets', `ds-${i}`);
       
-      // Attempt to parse usage from columns
       const usage = {};
       Object.keys(row).forEach(key => {
         const val = row[key]?.trim().toLowerCase();
-        // Look for our classification markers
         if (val === 'b' || val === 'a' || val === '?') usage[key] = val;
       });
 
@@ -401,65 +439,66 @@ export default function App() {
     await batch.commit();
   };
 
-  if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
-      <Loader2 className="animate-spin text-[#007CBA]" size={48} />
-      <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Connecting to Idox Systems...</p>
-    </div>
-  );
-
-  // If no role is selected, show the OverviewPage (Landing Page)
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
+        <Loader2 className="animate-spin text-[#007CBA]" size={48} />
+        <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Connecting to Idox Firebase...</p>
+      </div>
+    );
+  }
+  
   if (!role) return <OverviewPage onSelectRole={setRole} datasets={datasets} />;
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col">
-      <header className="bg-[#003057] text-white px-10 py-5 flex justify-between items-center sticky top-0 z-40 shadow-xl">
-        <div className="flex items-center gap-8">
-          <button onClick={() => setRole(null)} className="hover:opacity-80 transition-opacity">
-            <IdoxLogo />
-          </button>
-          <nav className="hidden md:flex gap-6">
-            <button 
-              onClick={() => setRole('sales')} 
-              className={`text-[10px] font-black uppercase tracking-widest border-b-2 pb-1 transition-all ${role === 'sales' ? 'border-sky-400 text-sky-400' : 'border-transparent text-slate-400 hover:text-white'}`}
-            >
-              Sales
-            </button>
-            <button 
-              onClick={() => setRole('data')} 
-              className={`text-[10px] font-black uppercase tracking-widest border-b-2 pb-1 transition-all ${role === 'data' ? 'border-sky-400 text-sky-400' : 'border-transparent text-slate-400 hover:text-white'}`}
-            >
-              Data Management
-            </button>
-            <button 
-              onClick={() => setRole('leadership')} 
-              className={`text-[10px] font-black uppercase tracking-widest border-b-2 pb-1 transition-all ${role === 'leadership' ? 'border-sky-400 text-sky-400' : 'border-transparent text-slate-400 hover:text-white'}`}
-            >
-              Leadership
-            </button>
+      <header className="bg-[#003057] text-white px-10 py-5 flex justify-between items-center shadow-xl sticky top-0 z-40">
+        <div className="flex items-center gap-12">
+          <button onClick={() => setRole(null)}><IdoxLogo /></button>
+          <nav className="hidden lg:flex gap-8">
+            {['sales', 'data', 'leadership'].map(r => (
+              <button 
+                key={r} 
+                onClick={() => setRole(r)} 
+                className={`text-[10px] font-black uppercase tracking-[0.2em] border-b-2 transition-all pb-1 ${role === r ? 'border-sky-400 text-sky-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+              >
+                {r === 'data' ? 'Data Management' : r}
+              </button>
+            ))}
           </nav>
         </div>
         <div className="flex items-center gap-4">
-           <div className="w-px h-6 bg-white/20" />
-           <div className="w-8 h-8 rounded bg-[#007CBA] flex items-center justify-center text-[10px] font-bold">AD</div>
+          <div className="text-right hidden sm:block">
+            <div className="text-xs font-bold leading-none">System Admin</div>
+            <div className="text-[9px] text-slate-400 font-bold uppercase mt-1">v1.5.1</div>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-[#007CBA] flex items-center justify-center font-bold text-sm shadow-lg">ID</div>
         </div>
       </header>
 
       <main className="flex-1 p-8 md:p-12 max-w-7xl mx-auto w-full">
+        <div className="flex items-center gap-4 mb-10">
+          <button onClick={() => setRole(null)} className="p-3 bg-white rounded-2xl text-slate-400 hover:bg-slate-50 border border-slate-100 shadow-sm transition-all">
+            <ArrowLeft size={18} />
+          </button>
+          <div className="h-4 w-px bg-slate-300 mx-2" />
+          <h2 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em]">{role} workspace</h2>
+        </div>
+
         {role === 'sales' && <SalesWorkflow datasets={datasets} />}
-        {role === 'data' && <DataWorkflow datasets={datasets} onSync={handleSync} />}
+        {role === 'data' && <DataWorkflow datasets={datasets} onCommit={handleCommit} onSync={handleSyncWorkbook} />}
         {role === 'leadership' && (
           <div className="bg-white p-24 rounded-[3rem] border-4 border-dashed border-slate-100 flex flex-col items-center gap-6">
              <BarChart3 size={80} className="text-slate-100" />
              <h3 className="text-3xl font-extrabold text-[#003057]">Intelligence Dashboard</h3>
-             <p className="text-slate-500 max-w-lg text-center leading-relaxed font-medium">Strategic coverage reports are being calculated.</p>
+             <p className="text-slate-500 max-w-lg text-center leading-relaxed font-medium">Strategic insights are being processed from the master workbook.</p>
           </div>
         )}
       </main>
 
-      <footer className="bg-white border-t border-slate-100 py-6 px-12 flex justify-between items-center">
-        <div className="text-[10px] font-black uppercase text-slate-400 tracking-widest">© 2024 Idox plc. Strategic Intelligence.</div>
-        <div className="flex gap-8 text-[10px] font-bold text-slate-400 uppercase">
+      <footer className="bg-white border-t border-slate-100 py-8 px-12 flex justify-between items-center">
+        <div className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">© 2024 Idox plc. Strategic Intelligence.</div>
+        <div className="flex gap-10 text-[10px] font-black uppercase text-slate-400 tracking-widest">
           <button className="hover:text-[#007CBA]">Privacy</button>
           <button className="hover:text-[#007CBA]">Support</button>
         </div>
