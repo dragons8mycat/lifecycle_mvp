@@ -29,9 +29,7 @@ jobs:
         run: npm install
           
       - name: Build
-        run: |
-          # The --base flag fixes the 404 by telling Vite your subfolder name
-          CI=false npm run build -- --base=/idox-lifecycle/
+        run: CI=false npm run build -- --base=/idox-lifecycle/
           
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
