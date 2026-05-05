@@ -31,10 +31,7 @@ jobs:
         run: npm install
           
       - name: Build
-        run: |
-          # CI=false ensures that minor linting warnings (like unused icons) 
-          # do not cause the build to fail with "Exit Code 1"
-          CI=false npm run build
+        run:  CI=false npm run build -- --base=/idox-lifecycle/
           
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
