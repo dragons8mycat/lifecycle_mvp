@@ -16,11 +16,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: 'npm'
           
-      - name: Install and Build
+      - name: Install Dependencies
         run: |
           npm install
+          # Verify firebase is installed to debug resolution errors
+          npm list firebase || echo "Firebase not found in package.json"
+          
+      - name: Build
+        run: |
           # We set CI=false to prevent lint warnings from stopping the build in production
+          # We use --emptyOutDir to ensure a clean build
           CI=false npm run build
           
       - name: Deploy
