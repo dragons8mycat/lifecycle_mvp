@@ -3,7 +3,6 @@ on:
   push:
     branches: [main]
 
-# This prevents multiple builds from running at the same time if you push twice
 concurrency:
   group: "pages"
   cancel-in-progress: true
@@ -14,7 +13,7 @@ jobs:
     permissions:
       contents: write
     env:
-      # This addresses the deprecation warning by forcing the runner to use Node 24
+      # This fixes the Node deprecation warning from your screenshot
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - name: Checkout
@@ -23,7 +22,6 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          # Bumping to 24 to match the runner environment
           node-version: 24
           cache: 'npm'
           
@@ -32,9 +30,8 @@ jobs:
           
       - name: Build
         run: |
-          # CI=false ensures that minor linting warnings (like unused icons) 
-          # do not cause the build to fail with "Exit Code 1"
-          CI=false npm run build
+          # The --base flag fixes the 404 by telling Vite your subfolder name
+          CI=false npm run build -- --base=/idox-lifecycle/
           
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
