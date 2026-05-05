@@ -85,6 +85,7 @@ const BUSINESS_UNITS = ['Commercial', 'Marketing', 'Product', 'Customer Success'
 // --- HELPERS ---
 const parseCSV = (text) => {
   const lines = text.split('\n').filter(line => line.trim() !== '');
+  if (lines.length === 0) return [];
   const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
   return lines.slice(1).map(line => {
     const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
@@ -272,6 +273,7 @@ const DataWorkflow = ({ datasets, onSync }) => {
     try {
       await onSync();
     } catch (e) {
+      console.error(e);
       setError("Failed to fetch from Google Sheets. Ensure the sheet is 'Published to Web' as CSV.");
     }
     setSyncing(false);
@@ -284,28 +286,52 @@ const DataWorkflow = ({ datasets, onSync }) => {
           <h2 className="text-3xl font-bold text-[#003057]">Catalogue Sync</h2>
           <p className="text-slate-500">Pull latest records from the master project workbook.</p>
         </div>
-        <button onClick={handleSync} disabled={syncing} className="bg-[#003057] text-white px-8 py-3 rounded-2xl font-bold flex items-center gap-2">
-          {syncing ? <Loader2 className="animate-spin" /> : <RefreshCw />} {syncing ? 'Syncing...' : 'Sync Workbook'}
+        <button 
+          onClick={handleSync} 
+          disabled={syncing} 
+          className="bg-[#003057] text-white px-8 py-3 rounded-2xl font-bold flex items-center gap-2 hover:bg-[#004a7a] transition-all disabled:opacity-50"
+        >
+          {syncing ? <Loader2 className="animate-spin" /> : <RefreshCw />} 
+          {syncing ? 'Syncing...' : 'Sync Workbook Now'}
         </button>
       </div>
 
       {error && (
         <div className="p-4 bg-rose-50 border border-rose-100 text-rose-700 rounded-xl flex gap-3 text-sm font-medium">
-          <AlertTriangle /> {error}
+          <AlertTriangle className="shrink-0" /> {error}
         </div>
       )}
 
       <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-[#003057] text-white text-[10px] font-black uppercase tracking-widest">
-            <tr><th className="px-6 py-5">Internal Name</th><th className="px-6 py-5">Common Name</th><th className="px-6 py-5">Group</th></tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {datasets.map(d => (
-              <tr key={d.id} className="hover:bg-slate-50"><td className="px-6 py-4 font-bold text-[#003057]">{d.name}</td><td className="px-6 py-4">{d.commonName}</td><td className="px-6 py-4"><Badge>{d.group || 'General'}</Badge></td></tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+          <h3 className="font-bold text-[#003057]">Active Catalogue ({datasets.length} records)</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+              <tr>
+                <th className="px-6 py-4">Internal Name</th>
+                <th className="px-6 py-4">Common Name</th>
+                <th className="px-6 py-4">Group</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {datasets.length === 0 ? (
+                <tr>
+                  <td colSpan="3" className="px-6 py-12 text-center text-slate-400 italic">No datasets found. Please click "Sync Workbook" above.</td>
+                </tr>
+              ) : (
+                datasets.map(d => (
+                  <tr key={d.id} className="hover:bg-slate-50">
+                    <td className="px-6 py-4 font-bold text-[#003057]">{d.name}</td>
+                    <td className="px-6 py-4 text-slate-600 font-mono text-xs">{d.commonName}</td>
+                    <td className="px-6 py-4"><Badge variant="blue">{d.group || 'General'}</Badge></td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -325,10 +351,14 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'datasets'));
-    return onSnapshot(q, (snap) => {
+    const unsubscribe = onSnapshot(q, (snap) => {
       setDatasets(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
+    }, (err) => {
+      console.error(err);
+      setLoading(false);
     });
+    return () => unsubscribe();
   }, [user]);
 
   const handleSync = async () => {
@@ -341,46 +371,99 @@ export default function App() {
     const csv = await response.text();
     const rows = parseCSV(csv);
     
+    if (rows.length === 0) return;
+
     const batch = writeBatch(db);
     rows.forEach((row, i) => {
-      if (!row.Name) return;
+      // Mapping based on common header names
+      const name = row.Name || row.name || row.Dataset || row.dataset;
+      if (!name) return;
+      
       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'datasets', `ds-${i}`);
       
       // Attempt to parse usage from columns
       const usage = {};
       Object.keys(row).forEach(key => {
         const val = row[key]?.trim().toLowerCase();
+        // Look for our classification markers
         if (val === 'b' || val === 'a' || val === '?') usage[key] = val;
       });
 
       batch.set(ref, {
-        name: row.Name,
+        name: name,
         commonName: row['Common Name'] || row.common_name || '',
         group: row.Group || row.group || 'General',
         description: row.Description || row.description || '',
-        usage: usage
+        usage: usage,
+        lastUpdated: new Date().toISOString()
       });
     });
     await batch.commit();
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-[#007CBA]" size={48} /></div>;
+  if (loading) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
+      <Loader2 className="animate-spin text-[#007CBA]" size={48} />
+      <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Connecting to Idox Systems...</p>
+    </div>
+  );
+
+  // If no role is selected, show the OverviewPage (Landing Page)
   if (!role) return <OverviewPage onSelectRole={setRole} datasets={datasets} />;
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col">
       <header className="bg-[#003057] text-white px-10 py-5 flex justify-between items-center sticky top-0 z-40 shadow-xl">
-        <button onClick={() => setRole(null)}><IdoxLogo /></button>
-        <nav className="flex gap-8">
-          {['sales', 'data'].map(r => (
-            <button key={r} onClick={() => setRole(r)} className={`text-[10px] font-black uppercase tracking-widest border-b-2 pb-1 ${role === r ? 'border-sky-400 text-sky-400' : 'border-transparent text-slate-400 hover:text-white'}`}>{r}</button>
-          ))}
-        </nav>
+        <div className="flex items-center gap-8">
+          <button onClick={() => setRole(null)} className="hover:opacity-80 transition-opacity">
+            <IdoxLogo />
+          </button>
+          <nav className="hidden md:flex gap-6">
+            <button 
+              onClick={() => setRole('sales')} 
+              className={`text-[10px] font-black uppercase tracking-widest border-b-2 pb-1 transition-all ${role === 'sales' ? 'border-sky-400 text-sky-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+            >
+              Sales
+            </button>
+            <button 
+              onClick={() => setRole('data')} 
+              className={`text-[10px] font-black uppercase tracking-widest border-b-2 pb-1 transition-all ${role === 'data' ? 'border-sky-400 text-sky-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+            >
+              Data Management
+            </button>
+            <button 
+              onClick={() => setRole('leadership')} 
+              className={`text-[10px] font-black uppercase tracking-widest border-b-2 pb-1 transition-all ${role === 'leadership' ? 'border-sky-400 text-sky-400' : 'border-transparent text-slate-400 hover:text-white'}`}
+            >
+              Leadership
+            </button>
+          </nav>
+        </div>
+        <div className="flex items-center gap-4">
+           <div className="w-px h-6 bg-white/20" />
+           <div className="w-8 h-8 rounded bg-[#007CBA] flex items-center justify-center text-[10px] font-bold">AD</div>
+        </div>
       </header>
+
       <main className="flex-1 p-8 md:p-12 max-w-7xl mx-auto w-full">
         {role === 'sales' && <SalesWorkflow datasets={datasets} />}
         {role === 'data' && <DataWorkflow datasets={datasets} onSync={handleSync} />}
+        {role === 'leadership' && (
+          <div className="bg-white p-24 rounded-[3rem] border-4 border-dashed border-slate-100 flex flex-col items-center gap-6">
+             <BarChart3 size={80} className="text-slate-100" />
+             <h3 className="text-3xl font-extrabold text-[#003057]">Intelligence Dashboard</h3>
+             <p className="text-slate-500 max-w-lg text-center leading-relaxed font-medium">Strategic coverage reports are being calculated.</p>
+          </div>
+        )}
       </main>
+
+      <footer className="bg-white border-t border-slate-100 py-6 px-12 flex justify-between items-center">
+        <div className="text-[10px] font-black uppercase text-slate-400 tracking-widest">© 2024 Idox plc. Strategic Intelligence.</div>
+        <div className="flex gap-8 text-[10px] font-bold text-slate-400 uppercase">
+          <button className="hover:text-[#007CBA]">Privacy</button>
+          <button className="hover:text-[#007CBA]">Support</button>
+        </div>
+      </footer>
     </div>
   );
 }
