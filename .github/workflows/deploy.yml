@@ -29,7 +29,7 @@ jobs:
         run: npm install
           
       - name: Build
-        run: CI=false npm run build -- --base=/idox-lifecycle/
+        run: CI=false npm run build -- --base=/lifecycle_mvp/
           
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
