@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+* Push via GitHub Desktop and wait for the Green checkmark on GitHub Actions.
 :root {
   --text: #6b6375;
   --text-h: #08060d;
