@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.5.0",
   "type": "module",
+  "homepage": "https://dragons8mycat.github.io/lifecycle_mvp/",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
