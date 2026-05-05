@@ -34,14 +34,14 @@ jobs:
           
       - name: Build
         run: |
-          # The --base flag ensures assets load correctly from the subfolder
-          # CI=false prevents warnings from being treated as errors
-          CI=false npm run build -- --base=/lifecycle_mvp/
+          # CI=false ensures that minor linting warnings do not stop the build
+          export CI=false
+          # The --base flag MUST match your repository name on GitHub
+          npm run build -- --base=/lifecycle_mvp/
           
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # This points to the production folder created by Vite
           path: './dist'
 
       - name: Deploy to GitHub Pages
