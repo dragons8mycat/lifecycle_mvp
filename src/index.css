@@ -2,40 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
-/* CRITICAL: The following resets ensure that the Tailwind-based
-Idox Geospatial UI can expand to the full width of the screen
-and maintains professional left-alignment for all data.
+/* CRITICAL: Professional resets for Idox Geospatial UI.
+This ensures the site fills the screen and text is
+properly aligned even if the build environment is finicky.
 */
 
 :root {
-font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+font-family: 'Inter', system-ui, -apple-system, sans-serif;
 line-height: 1.5;
 font-weight: 400;
-
 color-scheme: light;
 color: #0f172a;
 background-color: #f8fafc;
-
-font-synthesis: none;
 text-rendering: optimizeLegibility;
 -webkit-font-smoothing: antialiased;
 -moz-osx-font-smoothing: grayscale;
 }
 
-body {
+html, body {
 margin: 0;
-display: flex;
-place-items: start;
-min-width: 320px;
-min-height: 100vh;
+padding: 0;
+width: 100%;
+height: 100%;
 background-color: #f8fafc;
 }
 
 #root {
-width: 100%;
-margin: 0;
-padding: 0;
-text-align: left; /* Restores standard professional alignment */
+width: 100% !important;
+max-width: none !important;
+margin: 0 !important;
+padding: 0 !important;
+text-align: left !important; /* Forces left alignment for data tables */
 }
 
 /* Custom scrollbar for the lifecycle touchpoints panel */
@@ -55,4 +52,9 @@ border-radius: 10px;
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
 background: #94a3b8;
+}
+
+/* Ensure buttons look like buttons even if Tailwind fails */
+button {
+cursor: pointer;
 }
