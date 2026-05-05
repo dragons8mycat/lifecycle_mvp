@@ -3,7 +3,6 @@ on:
   push:
     branches: [main]
 
-# Necessary permissions for GitHub Actions to deploy to Pages
 permissions:
   contents: read
   pages: write
@@ -34,9 +33,7 @@ jobs:
           
       - name: Build
         run: |
-          # CI=false ensures that minor linting warnings do not stop the build
           export CI=false
-          # The --base flag MUST match your repository name on GitHub
           npm run build -- --base=/lifecycle_mvp/
           
       - name: Upload artifact
