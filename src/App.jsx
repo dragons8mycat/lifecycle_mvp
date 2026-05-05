@@ -31,7 +31,8 @@ import {
   DatabaseZap,
   Globe,
   MapPin,
-  ExternalLink
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 
 // --- FIREBASE CONFIGURATION ---
@@ -106,6 +107,7 @@ const CatalogueWorkspace = ({ datasets, onSync }) => {
   const [unit, setUnit] = useState('All business units');
   const [stage, setStage] = useState('All lifecycle stages');
   const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(null);
 
   useEffect(() => {
     if (datasets.length > 0 && !selected) setSelected(datasets[0]);
@@ -124,9 +126,13 @@ const CatalogueWorkspace = ({ datasets, onSync }) => {
 
   const handleSync = async () => {
     setSyncing(true);
+    setSyncError(null);
     try {
       await onSync();
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e);
+      setSyncError("Sync failed. Ensure your Google Sheet is 'Published to Web' as a CSV.");
+    }
     setSyncing(false);
   };
 
@@ -146,16 +152,23 @@ const CatalogueWorkspace = ({ datasets, onSync }) => {
              Browse the governed non-client catalogue. Switch into edit mode to refine record intelligence or trigger a sync with the master project workbook.
            </p>
         </div>
-        <div className="flex gap-4">
-          <button className="px-6 py-3 bg-slate-50 text-slate-600 border border-slate-200 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-100 transition-all">Admin Queue</button>
-          <button 
-            onClick={handleSync} 
-            disabled={syncing}
-            className="px-6 py-3 bg-[#003057] text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-[#004a7a] transition-all shadow-xl shadow-[#003057]/10 disabled:opacity-50"
-          >
-             {syncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
-             {syncing ? 'Syncing...' : 'Sync Workbook Now'}
-          </button>
+        <div className="flex flex-col items-end gap-3">
+          <div className="flex gap-4">
+            <button className="px-6 py-3 bg-slate-50 text-slate-600 border border-slate-200 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-100 transition-all">Admin Queue</button>
+            <button 
+              onClick={handleSync} 
+              disabled={syncing}
+              className="px-6 py-3 bg-[#003057] text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-[#004a7a] transition-all shadow-xl shadow-[#003057]/10 disabled:opacity-50"
+            >
+               {syncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+               {syncing ? 'Syncing...' : 'Sync Workbook Now'}
+            </button>
+          </div>
+          {syncError && (
+            <div className="text-[10px] font-bold text-rose-500 flex items-center gap-2 animate-pulse bg-rose-50 px-3 py-1 rounded-full border border-rose-100">
+              <AlertTriangle size={12} /> {syncError}
+            </div>
+          )}
         </div>
       </div>
 
@@ -218,24 +231,28 @@ const CatalogueWorkspace = ({ datasets, onSync }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map(d => (
-                  <tr 
-                    key={d.id} 
-                    onClick={() => setSelected(d)}
-                    className={`hover:bg-sky-50/40 transition-all cursor-pointer group ${selected?.id === d.id ? 'bg-sky-50' : ''}`}
-                  >
-                    <td className="px-10 py-6">
-                      <div className="font-extrabold text-[#003057] group-hover:text-sky-600 transition-colors text-base tracking-tight">{d.commonName || 'Untitled Dataset'}</div>
-                      <div className="text-[10px] text-slate-400 mt-1 font-mono uppercase tracking-tighter opacity-70">{d.name}</div>
-                    </td>
-                    <td className="px-10 py-6 text-xs text-slate-500 font-bold">{d.group}</td>
-                    <td className="px-10 py-6 text-xs text-slate-500 font-bold">{d.supplier || 'Idox / Local Auth'}</td>
-                    <td className="px-10 py-6 text-xs text-slate-500 font-bold">{d.bu}</td>
-                    <td className="px-10 py-6">
-                      <Badge variant="warning">Desired / Gap</Badge>
-                    </td>
-                  </tr>
-                ))}
+                {filtered.length === 0 ? (
+                  <tr><td colSpan="5" className="px-10 py-20 text-center text-slate-400 font-medium italic">No data synced. Click "Sync Workbook Now" above.</td></tr>
+                ) : (
+                  filtered.map(d => (
+                    <tr 
+                      key={d.id} 
+                      onClick={() => setSelected(d)}
+                      className={`hover:bg-sky-50/40 transition-all cursor-pointer group ${selected?.id === d.id ? 'bg-sky-50' : ''}`}
+                    >
+                      <td className="px-10 py-6">
+                        <div className="font-extrabold text-[#003057] group-hover:text-sky-600 transition-colors text-base tracking-tight">{d.commonName || 'Untitled Dataset'}</div>
+                        <div className="text-[10px] text-slate-400 mt-1 font-mono uppercase tracking-tighter opacity-70">{d.name}</div>
+                      </td>
+                      <td className="px-10 py-6 text-xs text-slate-500 font-bold">{d.group}</td>
+                      <td className="px-10 py-6 text-xs text-slate-500 font-bold">{d.supplier || 'Idox / Local Auth'}</td>
+                      <td className="px-10 py-6 text-xs text-slate-500 font-bold">{d.bu}</td>
+                      <td className="px-10 py-6">
+                        <Badge variant="warning">Desired / Gap</Badge>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -317,20 +334,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
 
-  // Authenticate & Handle Node Styling Conflicts
+  // Initialize and handle standard resets
   useEffect(() => {
-    // Force reset body styles that might be inherited from index.css
-    document.body.style.margin = "0";
-    document.body.style.padding = "0";
-    document.body.style.textAlign = "left";
-    const root = document.getElementById('root');
-    if (root) {
-      root.style.width = "100%";
-      root.style.maxWidth = "none";
-      root.style.textAlign = "left";
-      root.style.border = "none";
-    }
-
     signInAnonymously(auth).catch(console.error);
     return onAuthStateChanged(auth, setUser);
   }, []);
@@ -350,6 +355,7 @@ export default function App() {
   }, [user]);
 
   const handleSync = async () => {
+    // Standard CSV Export URL for Published Google Sheets
     const SHEET_ID = '17MCi7epIJdxac0xzV2QTGGBUoL4Hi11zhzrbeRtRJXg';
     const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
     
@@ -358,7 +364,6 @@ export default function App() {
       if (lines.length === 0) return [];
       const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
       return lines.slice(1).map(line => {
-        // Robust CSV splitting for quoted values
         const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
         const cleanValues = values.map(v => v.trim().replace(/^"|"$/g, ''));
         return headers.reduce((obj, header, index) => {
@@ -369,8 +374,14 @@ export default function App() {
     };
 
     const res = await fetch(url);
-    if (!res.ok) throw new Error("Fetch failed");
-    const rows = parseCSV(await res.text());
+    if (!res.ok) {
+        // Log details to help user fix the "Published to web" settings
+        console.error("HTTP Error during sync:", res.status, res.statusText);
+        throw new Error("HTTP " + res.status);
+    }
+    
+    const text = await res.text();
+    const rows = parseCSV(text);
     
     const batch = writeBatch(db);
     rows.forEach((row, i) => {
