@@ -32,10 +32,12 @@ import {
   Globe,
   MapPin,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  Filter,
+  MoreVertical
 } from 'lucide-react';
 
-// --- FIREBASE CONFIGURATION ---
+// --- FIREBASE CONFIG ---
 const firebaseConfig = {
   apiKey: "AIzaSyBYziumFk_ONDE7tVtdLFyV3L1yMGnzXj0",
   authDomain: "idox-lifecycle.firebaseapp.com",
@@ -80,7 +82,7 @@ const Badge = ({ children, variant = 'default' }) => {
     success: "bg-emerald-100 text-emerald-700 border-emerald-200",
     warning: "bg-amber-100 text-amber-700 border-amber-200",
     blue: "bg-sky-50 text-sky-700 border-sky-100",
-    idox: "bg-[#003057] text-white border-transparent"
+    gap: "bg-orange-50 text-orange-600 border-orange-100"
   };
   return (
     <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${styles[variant]}`}>
@@ -91,9 +93,9 @@ const Badge = ({ children, variant = 'default' }) => {
 
 const UsageIcon = ({ type }) => {
   const t = type?.toLowerCase();
-  if (t === 'basemap' || t === 'b') return <div title="Basemap" className="w-8 h-8 rounded-lg bg-[#007CBA] text-white flex items-center justify-center font-bold text-[11px] shadow-sm ring-2 ring-white/20">B</div>;
-  if (t === 'analytical' || t === 'a') return <div title="Analytical" className="w-8 h-8 rounded-lg bg-[#2ECC71] text-white flex items-center justify-center font-bold text-[11px] shadow-sm ring-2 ring-white/20">A</div>;
-  if (t === 'unknown' || t === '?') return <div title="Unknown" className="w-8 h-8 rounded-lg bg-[#F1C40F] text-white flex items-center justify-center font-bold text-[11px] shadow-sm ring-2 ring-white/20">?</div>;
+  if (t === 'basemap' || t === 'b') return <div title="Basemap" className="w-8 h-8 rounded-lg bg-[#007CBA] text-white flex items-center justify-center font-bold text-[11px] shadow-sm">B</div>;
+  if (t === 'analytical' || t === 'a') return <div title="Analytical" className="w-8 h-8 rounded-lg bg-[#2ECC71] text-white flex items-center justify-center font-bold text-[11px] shadow-sm">A</div>;
+  if (t === 'unknown' || t === '?') return <div title="Unknown" className="w-8 h-8 rounded-lg bg-[#F1C40F] text-white flex items-center justify-center font-bold text-[11px] shadow-sm">?</div>;
   return <div className="w-2 h-2 rounded-full bg-slate-200 mx-auto" />;
 };
 
@@ -116,7 +118,8 @@ const CatalogueWorkspace = ({ datasets, onSync }) => {
   const filtered = useMemo(() => {
     return datasets.filter(d => {
       const matchSearch = (d.commonName || '').toLowerCase().includes(search.toLowerCase()) || 
-                          (d.name || '').toLowerCase().includes(search.toLowerCase());
+                          (d.name || '').toLowerCase().includes(search.toLowerCase()) ||
+                          (d.supplier || '').toLowerCase().includes(search.toLowerCase());
       const matchGroup = dataGroup === 'All data groups' || d.group === dataGroup;
       const matchUnit = unit === 'All business units' || d.bu === unit;
       const matchStage = stage === 'All lifecycle stages' || (d.usage && d.usage[stage]);
@@ -138,29 +141,20 @@ const CatalogueWorkspace = ({ datasets, onSync }) => {
 
   return (
     <div className="space-y-10 text-left animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* Workspace Header */}
-      <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+      {/* Page Heading Section (Matches image_e55380.png) */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
-           <div className="flex items-center gap-2 text-[10px] font-black uppercase text-sky-600 tracking-[0.3em] mb-3">
-             <Globe size={12} />
-             <span>Strategic Intelligence</span>
-             <ChevronRight size={10} className="text-slate-300" />
-             <span className="text-slate-400">Catalogue Workspace</span>
-           </div>
-           <h2 className="text-4xl font-black text-[#003057] tracking-tight">Catalogue workspace</h2>
-           <p className="text-slate-500 text-sm mt-3 max-w-2xl leading-relaxed font-medium">
-             Browse the governed non-client catalogue. Switch into edit mode to refine record intelligence or trigger a sync with the master project workbook.
-           </p>
+          <span className="text-[10px] font-black text-sky-600 uppercase tracking-[0.3em] block mb-2">Data Management</span>
+          <h2 className="text-4xl font-black text-[#003057] tracking-tight">Catalogue workspace</h2>
+          <p className="text-slate-500 text-sm mt-2 max-w-2xl leading-relaxed font-medium">
+            Browse the governed non-client catalogue, switch into edit mode when records need improvement, and commit changes only when you are ready.
+          </p>
         </div>
         <div className="flex flex-col items-end gap-3">
-          <div className="flex gap-4">
-            <button className="px-6 py-3 bg-slate-50 text-slate-600 border border-slate-200 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-100 transition-all">Admin Queue</button>
-            <button 
-              onClick={handleSync} 
-              disabled={syncing}
-              className="px-6 py-3 bg-[#003057] text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-[#004a7a] transition-all shadow-xl shadow-[#003057]/10 disabled:opacity-50"
-            >
-               {syncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+          <div className="flex gap-3">
+            <button className="px-5 py-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl font-bold text-[11px] uppercase tracking-wider hover:bg-slate-100 transition-all">Open admin queue</button>
+            <button onClick={handleSync} disabled={syncing} className="px-5 py-2.5 bg-[#003057] text-white rounded-xl font-bold text-[11px] uppercase tracking-wider flex items-center gap-2 hover:bg-[#004a7a] transition-all shadow-lg shadow-[#003057]/10 disabled:opacity-50">
+               {syncing ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
                {syncing ? 'Syncing...' : 'Sync Workbook Now'}
             </button>
           </div>
@@ -172,67 +166,68 @@ const CatalogueWorkspace = ({ datasets, onSync }) => {
         </div>
       </div>
 
-      {/* Modern Filter Strip */}
-      <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-8 items-end">
-        <div className="space-y-3">
-          <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] block ml-1">Search records</label>
+      {/* Filter Strip */}
+      <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+        <div className="space-y-2">
+          <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] block ml-1">Common name</label>
           <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
-              className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-sky-500/10 outline-none transition-all placeholder:text-slate-300"
-              placeholder="Search common name..."
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-4 focus:ring-sky-500/10 outline-none transition-all placeholder:text-slate-300"
+              placeholder="Search common name, supplier..."
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
           </div>
         </div>
-        <div className="space-y-3">
+        <div className="space-y-2">
           <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] block ml-1">Data group</label>
-          <select className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none cursor-pointer hover:bg-slate-100 transition-colors" value={dataGroup} onChange={e => setDataGroup(e.target.value)}>
+          <select className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" value={dataGroup} onChange={e => setDataGroup(e.target.value)}>
             <option>All data groups</option>
             {DATA_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
           </select>
         </div>
-        <div className="space-y-3">
+        <div className="space-y-2">
           <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] block ml-1">Business unit</label>
-          <select className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none cursor-pointer hover:bg-slate-100 transition-colors" value={unit} onChange={e => setUnit(e.target.value)}>
+          <select className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" value={unit} onChange={e => setUnit(e.target.value)}>
             <option>All business units</option>
             {BUSINESS_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
           </select>
         </div>
-        <div className="space-y-3">
-          <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] block ml-1">Stage (Housing)</label>
-          <select className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold outline-none cursor-pointer hover:bg-slate-100 transition-colors" value={stage} onChange={e => setStage(e.target.value)}>
+        <div className="space-y-2">
+          <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] block ml-1">Lifecycle stage</label>
+          <select className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" value={stage} onChange={e => setStage(e.target.value)}>
             <option>All lifecycle stages</option>
             {INDUSTRY_STAGES[industry].map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
       </div>
 
-      {/* Content Split View */}
+      {/* Main Grid Split View */}
       <div className="flex flex-col lg:flex-row gap-10 items-start">
-        {/* Table Area */}
-        <div className="flex-1 bg-white rounded-[3rem] border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-10 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
-            <h3 className="text-xs font-black text-[#003057] uppercase tracking-widest flex items-center gap-2">
+        {/* Table Column */}
+        <div className="flex-1 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-8 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+            <h3 className="text-[11px] font-black text-[#003057] uppercase tracking-widest flex items-center gap-2">
               <Layers size={14} className="text-sky-500" /> Catalogue Records
             </h3>
-            <span className="text-[10px] font-black text-slate-400 bg-white px-3 py-1.5 rounded-full border border-slate-100 shadow-sm">{filtered.length} records found</span>
+            <span className="text-[10px] font-bold text-slate-400 bg-white px-2.5 py-1 rounded-full border border-slate-100 shadow-sm">{filtered.length} visible</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead className="bg-slate-50/50 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] border-b border-slate-100">
                 <tr>
-                  <th className="px-10 py-6">Common Name</th>
-                  <th className="px-10 py-6">Group</th>
-                  <th className="px-10 py-6">Supplier</th>
-                  <th className="px-10 py-6">BU</th>
-                  <th className="px-10 py-6">Status</th>
+                  <th className="px-8 py-5">Common Name</th>
+                  <th className="px-8 py-5">Data Group</th>
+                  <th className="px-8 py-5">Supplier</th>
+                  <th className="px-8 py-5">BU</th>
+                  <th className="px-8 py-5 text-center">Stages</th>
+                  <th className="px-8 py-5">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filtered.length === 0 ? (
-                  <tr><td colSpan="5" className="px-10 py-20 text-center text-slate-400 font-medium italic">No data synced. Click "Sync Workbook Now" above.</td></tr>
+                  <tr><td colSpan="6" className="px-8 py-20 text-center text-slate-400 font-medium italic">No records found. Push the sync button to pull data.</td></tr>
                 ) : (
                   filtered.map(d => (
                     <tr 
@@ -240,14 +235,15 @@ const CatalogueWorkspace = ({ datasets, onSync }) => {
                       onClick={() => setSelected(d)}
                       className={`hover:bg-sky-50/40 transition-all cursor-pointer group ${selected?.id === d.id ? 'bg-sky-50' : ''}`}
                     >
-                      <td className="px-10 py-6">
+                      <td className="px-8 py-5">
                         <div className="font-extrabold text-[#003057] group-hover:text-sky-600 transition-colors text-base tracking-tight">{d.commonName || 'Untitled Dataset'}</div>
-                        <div className="text-[10px] text-slate-400 mt-1 font-mono uppercase tracking-tighter opacity-70">{d.name}</div>
+                        <div className="text-[10px] text-slate-400 mt-1 font-mono uppercase tracking-tighter opacity-70 leading-none">{d.name}</div>
                       </td>
-                      <td className="px-10 py-6 text-xs text-slate-500 font-bold">{d.group}</td>
-                      <td className="px-10 py-6 text-xs text-slate-500 font-bold">{d.supplier || 'Idox / Local Auth'}</td>
-                      <td className="px-10 py-6 text-xs text-slate-500 font-bold">{d.bu}</td>
-                      <td className="px-10 py-6">
+                      <td className="px-8 py-5 text-xs text-slate-500 font-bold">{d.group}</td>
+                      <td className="px-8 py-5 text-xs text-slate-500 font-bold">{d.supplier || 'Idox / Local Auth'}</td>
+                      <td className="px-8 py-5 text-xs text-slate-500 font-bold">{d.bu}</td>
+                      <td className="px-8 py-5 text-center font-bold text-xs text-[#003057]">{Object.keys(d.usage || {}).length}</td>
+                      <td className="px-8 py-5">
                         <Badge variant="warning">Desired / Gap</Badge>
                       </td>
                     </tr>
@@ -258,7 +254,7 @@ const CatalogueWorkspace = ({ datasets, onSync }) => {
           </div>
         </div>
 
-        {/* Sidebar Detail Panel */}
+        {/* Sidebar Intelligence Panel */}
         <div className="w-full lg:w-[480px] bg-white rounded-[3rem] border border-slate-200 shadow-xl sticky top-32 overflow-hidden ring-1 ring-slate-100">
           {selected ? (
             <div className="p-12 space-y-10 animate-in fade-in duration-500">
@@ -282,19 +278,19 @@ const CatalogueWorkspace = ({ datasets, onSync }) => {
 
               <div className="grid grid-cols-2 gap-y-10 gap-x-6 pt-10 border-t border-slate-100">
                 <div className="space-y-2">
-                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block flex items-center gap-1.5"><Layers size={10}/> Data Group</label>
+                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block">Data Group</label>
                   <div className="text-xs font-black text-[#003057]">{selected.group}</div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block flex items-center gap-1.5"><MapPin size={10}/> Supplier</label>
+                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block">Supplier</label>
                   <div className="text-xs font-black text-[#003057]">{selected.supplier || 'Proprietary / Partners'}</div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block flex items-center gap-1.5"><Globe size={10}/> Coverage</label>
+                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block">Coverage</label>
                   <div className="text-xs font-black text-[#003057]">Great Britain (GB)</div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block flex items-center gap-1.5"><ExternalLink size={10}/> Business Unit</label>
+                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block">Business Unit</label>
                   <div className="text-xs font-black text-[#003057]">{selected.bu}</div>
                 </div>
               </div>
@@ -334,7 +330,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
 
-  // Initialize and handle standard resets
+  // Initialize and handle authentication
   useEffect(() => {
     signInAnonymously(auth).catch(console.error);
     return onAuthStateChanged(auth, setUser);
@@ -355,15 +351,16 @@ export default function App() {
   }, [user]);
 
   const handleSync = async () => {
-    // Standard CSV Export URL for Published Google Sheets
+    // UPDATED: Using the direct PUB URL which is more resilient to 400 errors for anonymous fetch
     const SHEET_ID = '17MCi7epIJdxac0xzV2QTGGBUoL4Hi11zhzrbeRtRJXg';
-    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
+    const url = `https://docs.google.com/spreadsheets/d/e/2PACX-1vQvqmCMo2ZAYVFcecyAA-yYJTJLMOM9ckKQJcXXOR7nrORVli5eduEVw6tiBpMck7UPaPtTg9/pub?output=csv`;
     
     const parseCSV = (text) => {
       const lines = text.split('\n').filter(line => line.trim() !== '');
       if (lines.length === 0) return [];
       const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
       return lines.slice(1).map(line => {
+        // Robust regex to split by comma while respecting quotes
         const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
         const cleanValues = values.map(v => v.trim().replace(/^"|"$/g, ''));
         return headers.reduce((obj, header, index) => {
@@ -374,18 +371,14 @@ export default function App() {
     };
 
     const res = await fetch(url);
-    if (!res.ok) {
-        // Log details to help user fix the "Published to web" settings
-        console.error("HTTP Error during sync:", res.status, res.statusText);
-        throw new Error("HTTP " + res.status);
-    }
+    if (!res.ok) throw new Error("Sync failed with status: " + res.status);
     
     const text = await res.text();
     const rows = parseCSV(text);
     
     const batch = writeBatch(db);
     rows.forEach((row, i) => {
-      const name = row.Name || row.name || row.Dataset;
+      const name = row.Name || row.name || row.Dataset || row.Dataset_Name;
       if (!name) return;
       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'datasets', `ds-${i}`);
       const usage = {};
@@ -396,7 +389,7 @@ export default function App() {
       batch.set(ref, {
         name,
         commonName: row['Common Name'] || row.common_name || '',
-        group: row.Group || row.group || 'General',
+        group: row.Group || row.group || row['Data Group'] || 'General',
         bu: row.BU || row.BusinessUnit || 'Geospatial',
         supplier: row.Supplier || row.supplier || '',
         description: row.Description || row.description || '',
@@ -438,9 +431,9 @@ export default function App() {
           </nav>
         </div>
         <div className="flex items-center gap-8">
-          <div className="flex flex-col items-end mr-2">
-            <span className="text-[9px] font-black text-sky-400 uppercase tracking-widest leading-none mb-1.5">Environment</span>
-            <span className="text-[12px] font-bold text-white leading-none">Strategic Intelligence v1.5</span>
+          <div className="flex flex-col items-end mr-2 text-right">
+            <span className="text-[9px] font-black text-sky-400 uppercase tracking-widest leading-none mb-1.5">Security Status</span>
+            <span className="text-[12px] font-bold text-white leading-none">Strategic Intelligence Hub</span>
           </div>
           <div className="w-12 h-12 rounded-2xl bg-sky-500 flex items-center justify-center text-white font-black text-base shadow-xl ring-4 ring-white/10 select-none">ID</div>
         </div>
@@ -459,7 +452,7 @@ export default function App() {
                 </p>
                 <div className="flex gap-6">
                   <button onClick={() => setRole('sales')} className="bg-[#003057] text-white px-12 py-6 rounded-3xl font-black text-xs uppercase tracking-widest shadow-2xl hover:translate-y-[-4px] hover:bg-[#004a7a] transition-all flex items-center gap-4">
-                    Sales Framework <ChevronRight size={20}/>
+                    Commercial View <ChevronRight size={20}/>
                   </button>
                   <button onClick={() => setRole('data')} className="bg-white text-[#003057] border-2 border-slate-200 px-12 py-6 rounded-3xl font-black text-xs uppercase tracking-widest shadow-sm hover:bg-slate-50 transition-all">
                     Catalogue Admin
@@ -472,10 +465,10 @@ export default function App() {
                  <DatabaseZap size={56} />
                </div>
                <h3 className="text-4xl font-black text-[#003057] mb-4 tracking-tight">{datasets.length} Active Records</h3>
-               <p className="text-slate-400 font-black text-xs uppercase tracking-[0.3em]">Product Intelligence Store</p>
+               <p className="text-slate-400 font-black text-xs uppercase tracking-[0.3em]">Master Product Intelligence</p>
                <div className="mt-12 flex gap-3 items-center">
                  <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-                 <span className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">Real-time Sync Active</span>
+                 <span className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">Global Sync Status</span>
                </div>
              </div>
           </div>
@@ -487,8 +480,8 @@ export default function App() {
               </button>
               <div className="h-10 w-px bg-slate-300 mx-2" />
               <div className="text-left">
-                <span className="text-[10px] font-black uppercase text-slate-400 tracking-[0.5em] block leading-none mb-2">Workspace Navigation</span>
-                <span className="text-2xl font-black text-[#003057] uppercase tracking-tighter leading-none capitalize">{role} workspace</span>
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-[0.5em] block leading-none mb-2 text-left">Workspace View</span>
+                <span className="text-2xl font-black text-[#003057] uppercase tracking-tighter leading-none capitalize text-left">{role} workspace</span>
               </div>
             </div>
             {role === 'data' ? (
@@ -498,9 +491,9 @@ export default function App() {
                 <div className="w-32 h-32 bg-slate-50 rounded-[3rem] flex items-center justify-center text-slate-200 border-2 border-slate-100 mb-6">
                   <BarChart3 size={60} />
                 </div>
-                <h3 className="text-4xl font-black text-[#003057] uppercase tracking-tight leading-none">Strategy Dashboard</h3>
+                <h3 className="text-4xl font-black text-[#003057] uppercase tracking-tight leading-none">Intelligence Dashboard</h3>
                 <p className="text-slate-400 font-black uppercase tracking-[0.4em] text-[11px] max-w-sm mx-auto leading-loose">
-                   Market coverage and commercial gap analysis reports are being compiled from the live master workbook.
+                   Strategic commercial reporting is currently being compiled from the live workbook.
                 </p>
               </div>
             )}
@@ -518,7 +511,6 @@ export default function App() {
         </div>
         <div className="flex flex-wrap justify-center gap-12 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
           <button className="hover:text-sky-600 transition-colors">Governance Policy</button>
-          <button className="hover:text-sky-600 transition-colors">Strategic Compliance</button>
           <button className="hover:text-sky-600 transition-colors">Internal Support</button>
           <button className="hover:text-emerald-600 transition-colors flex items-center gap-3">
             System Online <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
