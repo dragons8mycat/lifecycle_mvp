@@ -209,7 +209,14 @@ function normaliseDataset(input, index = 0) {
   );
   const supplier = normalizeValue(input.supplier || input.Supplier || input.Provider);
   const businessUnit = normalizeBusinessUnit(
-    input.businessUnit || input.BusinessUnit || input.BU || input.bu || input.Company,
+    input.businessUnit ||
+      input.BusinessUnit ||
+      input.BU ||
+      input.bu ||
+      input.Company ||
+      input.origin_company ||
+      input.originCompany ||
+      input['Origin Company'],
     supplier,
     status,
   );
@@ -577,20 +584,24 @@ function SalesWorkspace({ datasets }) {
         : filteredDatasets.filter((dataset) => dataset.usage?.[selectedStage] === roleFilter),
     [filteredDatasets, roleFilter, selectedStage],
   );
-  const stageEntries = useMemo(() => {
-    const entries = getStageEntries(roleScopedDatasets, selectedStage);
+  const sortedScopedDatasets = useMemo(() => {
     const roleScore = { A: 4, B: 3, D: 2, U: 1 };
 
-    return [...entries].sort((left, right) => {
+    return [...roleScopedDatasets].sort((left, right) => {
       if (salesSort === 'alpha-desc') {
-        return right.dataset.commonName.localeCompare(left.dataset.commonName);
+        return right.commonName.localeCompare(left.commonName);
       }
       if (salesSort === 'alpha-asc') {
-        return left.dataset.commonName.localeCompare(right.dataset.commonName);
+        return left.commonName.localeCompare(right.commonName);
       }
-      return roleScore[right.role] - roleScore[left.role] || left.dataset.commonName.localeCompare(right.dataset.commonName);
+      const leftScore = roleScore[left.usage?.[selectedStage]] || 0;
+      const rightScore = roleScore[right.usage?.[selectedStage]] || 0;
+      return rightScore - leftScore || left.commonName.localeCompare(right.commonName);
     });
-  }, [roleScopedDatasets, selectedStage, salesSort]);
+  }, [roleScopedDatasets, salesSort, selectedStage]);
+  const stageEntries = useMemo(() => {
+    return getStageEntries(sortedScopedDatasets, selectedStage);
+  }, [selectedStage, sortedScopedDatasets]);
   const primaryEntries = stageEntries.filter((entry) => entry.role !== 'U');
   const weakEntries = stageEntries.filter((entry) => entry.role === 'U');
   const selectedRecord = useMemo(
@@ -640,8 +651,35 @@ function SalesWorkspace({ datasets }) {
             ))}
           </div>
         </div>
+      </ShellCard>
 
-        <div className="mt-7 grid gap-4 xl:grid-cols-7">
+      <div className="sticky top-24 z-20 rounded-[28px] border border-slate-200 bg-white/95 p-4 shadow-panel backdrop-blur">
+        <div className="mb-3 flex items-center justify-between gap-4">
+          <div>
+            <div className="text-sm font-semibold text-brand-heading">{industry} lifecycle stages</div>
+            <div className="text-xs text-slate-500">
+              The selected stage stays visible while you scan the view.
+              {roleFilter !== 'all' ? ` Filtered to ${roleLabel(roleFilter).toLowerCase()} records at this stage.` : ''}
+            </div>
+          </div>
+          <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">{sortedScopedDatasets.length} datasets in current view</div>
+        </div>
+        <div className="flex gap-3 overflow-x-auto pb-1">
+          {stages.map((stage, index) => (
+            <button
+              key={stage}
+              type="button"
+              onClick={() => setSelectedStage(stage)}
+              className={`min-w-48 rounded-2xl border p-4 text-left transition ${
+                stage === selectedStage ? 'border-brand-orange bg-orange-50' : 'border-slate-200 bg-white hover:border-brand-sky'
+              }`}
+            >
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Stage {index + 1}</div>
+              <div className="mt-2 text-sm font-bold text-brand-heading">{stage}</div>
+            </button>
+          ))}
+        </div>
+        <div className="mt-4 grid gap-4 border-t border-slate-100 pt-4 xl:grid-cols-2">
           <FilterField label="Industry">
             <select value={industry} onChange={(event) => setIndustry(event.target.value)} className="field-control">
               {industries.map((option) => (
@@ -660,69 +698,6 @@ function SalesWorkspace({ datasets }) {
               ))}
             </select>
           </FilterField>
-          <FilterField label="Data common name" className="xl:col-span-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} className="field-control pl-10" placeholder="Search datasets, suppliers, raw names, or descriptions" />
-            </div>
-          </FilterField>
-          <FilterField label="Availability">
-            <select value={availability} onChange={(event) => setAvailability(event.target.value)} className="field-control">
-              <option value="all">All data</option>
-              <option value="catalogue">In catalogue</option>
-              <option value="product">Available as product</option>
-              <option value="required">Required / desired</option>
-              <option value="missing-catalogue">Not in catalogue</option>
-              <option value="not-productised">Not productised</option>
-            </select>
-          </FilterField>
-          <FilterField label="Data group">
-            <select value={dataGroup} onChange={(event) => setDataGroup(event.target.value)} className="field-control">
-              <option value="all">All data groups</option>
-              {families.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Stage role">
-            <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="field-control">
-              <option value="all">All roles</option>
-              <option value="A">Analytical</option>
-              <option value="B">Basemapping</option>
-              <option value="D">Descriptive / contextual</option>
-              <option value="U">Unknown / needs classification</option>
-            </select>
-          </FilterField>
-        </div>
-      </ShellCard>
-
-      <div className="sticky top-24 z-20 rounded-[28px] border border-slate-200 bg-white/95 p-4 shadow-panel backdrop-blur">
-        <div className="mb-3 flex items-center justify-between gap-4">
-          <div>
-            <div className="text-sm font-semibold text-brand-heading">{industry} lifecycle stages</div>
-            <div className="text-xs text-slate-500">
-              The selected stage stays visible while you scan the view.
-              {roleFilter !== 'all' ? ` Filtered to ${roleLabel(roleFilter).toLowerCase()} records at this stage.` : ''}
-            </div>
-          </div>
-          <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">{roleScopedDatasets.length} datasets in current view</div>
-        </div>
-        <div className="flex gap-3 overflow-x-auto pb-1">
-          {stages.map((stage, index) => (
-            <button
-              key={stage}
-              type="button"
-              onClick={() => setSelectedStage(stage)}
-              className={`min-w-48 rounded-2xl border p-4 text-left transition ${
-                stage === selectedStage ? 'border-brand-orange bg-orange-50' : 'border-slate-200 bg-white hover:border-brand-sky'
-              }`}
-            >
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Stage {index + 1}</div>
-              <div className="mt-2 text-sm font-bold text-brand-heading">{stage}</div>
-            </button>
-          ))}
         </div>
       </div>
 
@@ -737,32 +712,26 @@ function SalesWorkspace({ datasets }) {
                   The frozen stage rail above is the main stage reference. This matrix keeps the view cleaner by showing the dataset list once and the role markers directly under that shared rail.
                 </p>
               </div>
-              <div className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  {['A', 'B', 'D', 'U'].map((role) => (
-                    <RoleBadge key={role} role={role} />
-                  ))}
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <FilterField label="Role filter" compact>
-                    <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="field-control min-w-56">
-                      <option value="all">All roles</option>
-                      <option value="A">Analytical</option>
-                      <option value="B">Basemapping</option>
-                      <option value="D">Descriptive / contextual</option>
-                      <option value="U">Unknown / needs classification</option>
-                    </select>
-                  </FilterField>
-                  <FilterField label="Sort" compact>
-                    <select value={salesSort} onChange={(event) => setSalesSort(event.target.value)} className="field-control min-w-56">
-                      <option value="role-priority">Role priority</option>
-                      <option value="alpha-asc">Alphabetical A-Z</option>
-                      <option value="alpha-desc">Alphabetical Z-A</option>
-                    </select>
-                  </FilterField>
-                </div>
+              <div className="flex flex-wrap gap-2">
+                {['A', 'B', 'D', 'U'].map((role) => (
+                  <RoleBadge key={role} role={role} />
+                ))}
               </div>
             </div>
+            <SalesControlBar
+              search={search}
+              setSearch={setSearch}
+              availability={availability}
+              setAvailability={setAvailability}
+              dataGroup={dataGroup}
+              setDataGroup={setDataGroup}
+              families={families}
+              roleFilter={roleFilter}
+              setRoleFilter={setRoleFilter}
+              salesSort={salesSort}
+              setSalesSort={setSalesSort}
+              className="mt-5"
+            />
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-[1080px] w-full text-sm">
@@ -777,12 +746,12 @@ function SalesWorkspace({ datasets }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {roleScopedDatasets.map((dataset) => (
+                {sortedScopedDatasets.map((dataset) => (
                   <tr key={dataset.id}>
                     <td className="sticky left-0 z-[1] border-r border-slate-200 bg-white px-6 py-4 align-top">
                       <button type="button" onClick={() => setSelectedDatasetId(dataset.id)} className="text-left">
                         <div className="font-black text-brand-navy">{dataset.commonName}</div>
-                        <div className="mt-1 text-xs text-slate-400">{dataset.group} · {dataset.supplier}</div>
+                        <div className="mt-1 text-xs text-slate-400">{dataset.group} | {dataset.supplier}</div>
                       </button>
                     </td>
                     {stages.map((stage) => (
@@ -810,29 +779,25 @@ function SalesWorkspace({ datasets }) {
                     Stronger lifecycle classifications are shown first so the answer stays simple and usable during client discussions.
                   </p>
                 </div>
-                <div className="flex flex-wrap items-end gap-3">
-                  <FilterField label="Role filter" compact>
-                    <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="field-control min-w-52">
-                      <option value="all">All roles</option>
-                      <option value="A">Analytical</option>
-                      <option value="B">Basemapping</option>
-                      <option value="D">Descriptive / contextual</option>
-                      <option value="U">Unknown / needs classification</option>
-                    </select>
-                  </FilterField>
-                  <FilterField label="Sort" compact>
-                    <select value={salesSort} onChange={(event) => setSalesSort(event.target.value)} className="field-control min-w-52">
-                      <option value="role-priority">Role priority</option>
-                      <option value="alpha-asc">Alphabetical A-Z</option>
-                      <option value="alpha-desc">Alphabetical Z-A</option>
-                    </select>
-                  </FilterField>
-                  <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
-                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Visible now</div>
-                    <div className="mt-2 text-3xl font-black text-brand-heading">{stageEntries.length}</div>
-                  </div>
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Visible now</div>
+                  <div className="mt-2 text-3xl font-black text-brand-heading">{stageEntries.length}</div>
                 </div>
               </div>
+              <SalesControlBar
+                search={search}
+                setSearch={setSearch}
+                availability={availability}
+                setAvailability={setAvailability}
+                dataGroup={dataGroup}
+                setDataGroup={setDataGroup}
+                families={families}
+                roleFilter={roleFilter}
+                setRoleFilter={setRoleFilter}
+                salesSort={salesSort}
+                setSalesSort={setSalesSort}
+                className="mt-5"
+              />
             </ShellCard>
 
             {grouped.map((group) =>
@@ -933,7 +898,7 @@ function SalesWorkspace({ datasets }) {
                 <dl className="mt-6 grid gap-4 text-sm text-slate-700">
                   <div>
                     <dt className="font-semibold text-slate-500">Current industry and stage</dt>
-                    <dd className="mt-1 font-semibold text-brand-heading">{industry} · {selectedStage}</dd>
+                    <dd className="mt-1 font-semibold text-brand-heading">{industry} | {selectedStage}</dd>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
@@ -1322,6 +1287,75 @@ function DetailItem({ label, value }) {
     <div>
       <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</div>
       <div className="mt-2 text-sm font-semibold text-brand-navy">{value}</div>
+    </div>
+  );
+}
+
+function SalesControlBar({
+  search,
+  setSearch,
+  availability,
+  setAvailability,
+  dataGroup,
+  setDataGroup,
+  families,
+  roleFilter,
+  setRoleFilter,
+  salesSort,
+  setSalesSort,
+  className = '',
+}) {
+  return (
+    <div className={`grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50/90 p-4 ${className}`}>
+      <div className="grid gap-4 xl:grid-cols-[1.6fr_repeat(4,minmax(0,1fr))]">
+        <FilterField label="Data common name">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="field-control pl-10"
+              placeholder="Search datasets, suppliers, raw names, or descriptions"
+            />
+          </div>
+        </FilterField>
+        <FilterField label="Availability">
+          <select value={availability} onChange={(event) => setAvailability(event.target.value)} className="field-control">
+            <option value="all">All data</option>
+            <option value="catalogue">In catalogue</option>
+            <option value="product">Available as product</option>
+            <option value="required">Required / desired</option>
+            <option value="missing-catalogue">Not in catalogue</option>
+            <option value="not-productised">Not productised</option>
+          </select>
+        </FilterField>
+        <FilterField label="Data group">
+          <select value={dataGroup} onChange={(event) => setDataGroup(event.target.value)} className="field-control">
+            <option value="all">All data groups</option>
+            {families.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </FilterField>
+        <FilterField label="Stage role">
+          <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="field-control">
+            <option value="all">All roles</option>
+            <option value="A">Analytical</option>
+            <option value="B">Basemapping</option>
+            <option value="D">Descriptive / contextual</option>
+            <option value="U">Unknown / needs classification</option>
+          </select>
+        </FilterField>
+        <FilterField label="Sort">
+          <select value={salesSort} onChange={(event) => setSalesSort(event.target.value)} className="field-control">
+            <option value="role-priority">Role priority</option>
+            <option value="alpha-asc">Alphabetical A-Z</option>
+            <option value="alpha-desc">Alphabetical Z-A</option>
+          </select>
+        </FilterField>
+      </div>
     </div>
   );
 }
