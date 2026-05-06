@@ -552,6 +552,15 @@ function OverviewPage({ datasets, onOpenRole }) {
 
 function SalesWorkspace({ datasets }) {
   const industries = Object.keys(INDUSTRY_STAGES);
+  const MATRIX_ROLE_OPTIONS = [
+    { value: 'all', label: 'All' },
+    { value: 'used', label: 'Any used' },
+    { value: 'A', label: 'A' },
+    { value: 'B', label: 'B' },
+    { value: 'D', label: 'D' },
+    { value: 'U', label: 'U' },
+    { value: 'none', label: 'Empty' },
+  ];
   const [industry, setIndustry] = useState(industries[0]);
   const [viewMode, setViewMode] = useState('touchpoint');
   const [search, setSearch] = useState('');
@@ -561,6 +570,7 @@ function SalesWorkspace({ datasets }) {
   const [salesSort, setSalesSort] = useState('role-priority');
   const [selectedStage, setSelectedStage] = useState(INDUSTRY_STAGES[industries[0]][0]);
   const [selectedDatasetId, setSelectedDatasetId] = useState('');
+  const [matrixRoleFilters, setMatrixRoleFilters] = useState({});
 
   const stages = INDUSTRY_STAGES[industry];
   const families = useMemo(
@@ -577,12 +587,16 @@ function SalesWorkspace({ datasets }) {
     () => getDatasetsForIndustry(datasets, industry, { search, availability, dataGroup }),
     [availability, dataGroup, datasets, industry, search],
   );
+  const stageScopedDatasets = useMemo(
+    () => filteredDatasets.filter((dataset) => Boolean(dataset.usage?.[selectedStage])),
+    [filteredDatasets, selectedStage],
+  );
   const roleScopedDatasets = useMemo(
     () =>
       roleFilter === 'all'
-        ? filteredDatasets
-        : filteredDatasets.filter((dataset) => dataset.usage?.[selectedStage] === roleFilter),
-    [filteredDatasets, roleFilter, selectedStage],
+        ? stageScopedDatasets
+        : stageScopedDatasets.filter((dataset) => dataset.usage?.[selectedStage] === roleFilter),
+    [roleFilter, selectedStage, stageScopedDatasets],
   );
   const sortedScopedDatasets = useMemo(() => {
     const roleScore = { A: 4, B: 3, D: 2, U: 1 };
@@ -602,6 +616,20 @@ function SalesWorkspace({ datasets }) {
   const stageEntries = useMemo(() => {
     return getStageEntries(sortedScopedDatasets, selectedStage);
   }, [selectedStage, sortedScopedDatasets]);
+  const matrixDatasets = useMemo(
+    () =>
+      sortedScopedDatasets.filter((dataset) =>
+        stages.every((stageName) => {
+          const filterValue = matrixRoleFilters[stageName] || 'all';
+          if (filterValue === 'all') return true;
+          const usageValue = dataset.usage?.[stageName] || '';
+          if (filterValue === 'used') return Boolean(usageValue);
+          if (filterValue === 'none') return !usageValue;
+          return usageValue === filterValue;
+        }),
+      ),
+    [matrixRoleFilters, sortedScopedDatasets, stages],
+  );
   const primaryEntries = stageEntries.filter((entry) => entry.role !== 'U');
   const weakEntries = stageEntries.filter((entry) => entry.role === 'U');
   const selectedRecord = useMemo(
@@ -614,6 +642,10 @@ function SalesWorkspace({ datasets }) {
   }, [industry, stages]);
 
   useEffect(() => {
+    setMatrixRoleFilters({});
+  }, [industry]);
+
+  useEffect(() => {
     if (selectedRecord && selectedRecord.dataset.id !== selectedDatasetId) {
       setSelectedDatasetId(selectedRecord.dataset.id);
     }
@@ -623,6 +655,22 @@ function SalesWorkspace({ datasets }) {
     role,
     items: primaryEntries.filter((entry) => entry.role === role),
   }));
+
+  function updateMatrixRoleFilter(stageName, nextValue) {
+    setMatrixRoleFilters((current) => ({
+      ...current,
+      [stageName]: nextValue,
+    }));
+  }
+
+  function resetMatrixFilters() {
+    setSearch('');
+    setAvailability('all');
+    setDataGroup('all');
+    setRoleFilter('all');
+    setSalesSort('role-priority');
+    setMatrixRoleFilters({});
+  }
 
   return (
     <div className="space-y-6">
@@ -662,22 +710,9 @@ function SalesWorkspace({ datasets }) {
               {roleFilter !== 'all' ? ` Filtered to ${roleLabel(roleFilter).toLowerCase()} records at this stage.` : ''}
             </div>
           </div>
-          <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">{sortedScopedDatasets.length} datasets in current view</div>
-        </div>
-        <div className="flex gap-3 overflow-x-auto pb-1">
-          {stages.map((stage, index) => (
-            <button
-              key={stage}
-              type="button"
-              onClick={() => setSelectedStage(stage)}
-              className={`min-w-48 rounded-2xl border p-4 text-left transition ${
-                stage === selectedStage ? 'border-brand-orange bg-orange-50' : 'border-slate-200 bg-white hover:border-brand-sky'
-              }`}
-            >
-              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Stage {index + 1}</div>
-              <div className="mt-2 text-sm font-bold text-brand-heading">{stage}</div>
-            </button>
-          ))}
+          <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+            {(viewMode === 'touchpoint' ? matrixDatasets : sortedScopedDatasets).length} datasets in current view
+          </div>
         </div>
         <div className="mt-4 border-t border-slate-100 pt-4">
           <div className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Industry</div>
@@ -698,6 +733,34 @@ function SalesWorkspace({ datasets }) {
             ))}
           </div>
         </div>
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <div className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Current stage</div>
+          <div className="overflow-x-auto pb-1">
+            <div className="grid min-w-[1180px] gap-2 xl:min-w-0" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }}>
+              {stages.map((stage, index) => (
+                <button
+                  key={stage}
+                  type="button"
+                  onClick={() => setSelectedStage(stage)}
+                  className={`min-w-0 px-5 py-3 text-left transition ${
+                    stage === selectedStage ? 'bg-brand-blue text-white shadow-sm' : 'bg-slate-50 text-brand-heading hover:bg-sky-50'
+                  }`}
+                  style={{
+                    clipPath:
+                      index === stages.length - 1
+                        ? 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 12px 50%)'
+                        : 'polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%, 12px 50%)',
+                  }}
+                >
+                  <div className={`text-[10px] font-black uppercase tracking-[0.18em] ${stage === selectedStage ? 'text-white/70' : 'text-slate-500'}`}>
+                    Stage {index + 1}
+                  </div>
+                  <div className="mt-1 text-sm font-black">{stage}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
       {viewMode === 'touchpoint' ? (
@@ -711,10 +774,19 @@ function SalesWorkspace({ datasets }) {
                   The frozen stage rail above is the main stage reference. This matrix keeps the view cleaner by showing the dataset list once and the role markers directly under that shared rail.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {['A', 'B', 'D', 'U'].map((role) => (
-                  <RoleBadge key={role} role={role} />
-                ))}
+              <div className="flex flex-col items-start gap-3 lg:items-end">
+                <button
+                  type="button"
+                  onClick={resetMatrixFilters}
+                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-600 transition hover:border-brand-sky hover:text-brand-heading"
+                >
+                  Reset filters
+                </button>
+                <div className="flex flex-wrap gap-2">
+                  {['A', 'B', 'D', 'U'].map((role) => (
+                    <RoleBadge key={role} role={role} />
+                  ))}
+                </div>
               </div>
             </div>
             <SalesControlBar
@@ -730,38 +802,72 @@ function SalesWorkspace({ datasets }) {
               salesSort={salesSort}
               setSalesSort={setSalesSort}
               className="mt-5"
+              showSearch={false}
             />
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-[1080px] w-full text-sm">
+            <table className="min-w-[1488px] w-full table-fixed text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-slate-500">
-                  <th className="sticky left-0 z-10 min-w-80 border-r border-slate-200 bg-slate-50 px-6 py-3 text-left text-[11px] font-black uppercase tracking-[0.18em]">Dataset</th>
+                  <th className="sticky left-0 z-10 w-64 border-r border-slate-200 bg-slate-50 px-6 py-3 text-left align-top">
+                    <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">Dataset</div>
+                    <div className="mt-3">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                        <input
+                          value={search}
+                          onChange={(event) => setSearch(event.target.value)}
+                          className="field-control py-2.5 pl-9"
+                          placeholder="Search datasets"
+                        />
+                      </div>
+                    </div>
+                  </th>
                   {stages.map((stage, index) => (
-                    <th key={stage} className={`min-w-40 px-4 py-3 text-center text-[11px] font-black uppercase tracking-[0.18em] ${stage === selectedStage ? 'bg-orange-50 text-brand-orange' : ''}`}>
-                      <div>Stage {index + 1}</div>
+                    <th key={stage} className={`w-28 px-3 py-3 text-center align-top ${stage === selectedStage ? 'bg-orange-50 text-brand-orange' : ''}`}>
+                      <div className="text-[11px] font-black uppercase tracking-[0.18em]">Stage {index + 1}</div>
+                      <select
+                        value={matrixRoleFilters[stage] || 'all'}
+                        onChange={(event) => updateMatrixRoleFilter(stage, event.target.value)}
+                        className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 outline-none transition focus:border-brand-blue focus:ring-4 focus:ring-brand-blue/10"
+                        aria-label={`Filter ${stage} column`}
+                      >
+                        {MATRIX_ROLE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {sortedScopedDatasets.map((dataset) => (
-                  <tr key={dataset.id}>
-                    <td className="sticky left-0 z-[1] border-r border-slate-200 bg-white px-6 py-4 align-top">
-                      <button type="button" onClick={() => setSelectedDatasetId(dataset.id)} className="text-left">
-                        <div className="font-black text-brand-navy">{dataset.commonName}</div>
-                        <div className="mt-1 text-xs text-slate-400">{dataset.group} | {dataset.supplier}</div>
-                      </button>
+                {matrixDatasets.length === 0 ? (
+                  <tr>
+                    <td colSpan={stages.length + 1} className="px-6 py-16 text-center text-sm font-semibold text-slate-400">
+                      No datasets match the current stage and matrix filters.
                     </td>
-                    {stages.map((stage) => (
-                      <td key={stage} className={`px-4 py-4 text-center ${stage === selectedStage ? 'bg-orange-50/50' : ''}`}>
-                        <div className="inline-flex min-w-20 justify-center">
-                          <UsageMarker value={dataset.usage?.[stage]} />
-                        </div>
-                      </td>
-                    ))}
                   </tr>
-                ))}
+                ) : (
+                  matrixDatasets.map((dataset) => (
+                    <tr key={dataset.id}>
+                      <td className="sticky left-0 z-[1] w-64 border-r border-slate-200 bg-white px-6 py-4 align-top">
+                        <button type="button" onClick={() => setSelectedDatasetId(dataset.id)} className="text-left">
+                          <div className="font-black text-brand-navy">{dataset.commonName}</div>
+                          <div className="mt-1 text-xs text-slate-400">{dataset.group} | {dataset.supplier}</div>
+                        </button>
+                      </td>
+                      {stages.map((stage) => (
+                        <td key={stage} className={`px-4 py-4 text-center ${stage === selectedStage ? 'bg-orange-50/50' : ''}`}>
+                          <div className="inline-flex min-w-20 justify-center">
+                            <UsageMarker value={dataset.usage?.[stage]} />
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -1303,21 +1409,24 @@ function SalesControlBar({
   salesSort,
   setSalesSort,
   className = '',
+  showSearch = true,
 }) {
   return (
     <div className={`grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50/90 p-4 ${className}`}>
-      <div className="grid gap-4 xl:grid-cols-[1.6fr_repeat(4,minmax(0,1fr))]">
-        <FilterField label="Data common name">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="field-control pl-10"
-              placeholder="Search datasets, suppliers, raw names, or descriptions"
-            />
-          </div>
-        </FilterField>
+      <div className={`grid gap-4 ${showSearch ? 'xl:grid-cols-[1.6fr_repeat(4,minmax(0,1fr))]' : 'xl:grid-cols-4'}`}>
+        {showSearch ? (
+          <FilterField label="Data common name">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="field-control pl-10"
+                placeholder="Search datasets, suppliers, raw names, or descriptions"
+              />
+            </div>
+          </FilterField>
+        ) : null}
         <FilterField label="Availability">
           <select value={availability} onChange={(event) => setAvailability(event.target.value)} className="field-control">
             <option value="all">All data</option>
