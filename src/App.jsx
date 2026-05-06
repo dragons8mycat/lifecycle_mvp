@@ -173,6 +173,30 @@ function parseCsv(text) {
   );
 }
 
+function parseGoogleSheetJson(text) {
+  const prefix = 'google.visualization.Query.setResponse(';
+  const suffix = ');';
+  const start = text.indexOf(prefix);
+  const end = text.lastIndexOf(suffix);
+
+  if (start === -1 || end === -1) {
+    throw new Error('Unexpected Google Sheets response format.');
+  }
+
+  return JSON.parse(text.slice(start + prefix.length, end));
+}
+
+function sheetTableToObjects(table) {
+  const headers = (table.cols || []).map((column) => column.label || column.id || '');
+  return (table.rows || []).map((row) =>
+    headers.reduce((record, header, index) => {
+      const cell = row.c?.[index];
+      record[header] = cell?.v ?? '';
+      return record;
+    }, {}),
+  );
+}
+
 function normaliseDataset(input, index = 0) {
   const status = normalizeStatus(
     input.status || input.Status || input['Source Status'] || input['Source/Status'] || input.catalogueStatus,
@@ -189,6 +213,13 @@ function normaliseDataset(input, index = 0) {
 
   const usage = {};
   const knownStages = new Set(Object.values(INDUSTRY_STAGES).flat());
+  if (input.usage && typeof input.usage === 'object') {
+    Object.entries(input.usage).forEach(([stageName, roleValue]) => {
+      if (!knownStages.has(stageName)) return;
+      const marker = normalizeUsageValue(roleValue);
+      if (marker) usage[stageName] = marker;
+    });
+  }
   Object.entries(input || {}).forEach(([key, value]) => {
     if (!knownStages.has(key)) return;
     const marker = normalizeUsageValue(value);
@@ -877,6 +908,7 @@ function CatalogueWorkspace({ datasets, onSync }) {
   const [selectedId, setSelectedId] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState('');
+  const [syncMessage, setSyncMessage] = useState('');
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [editUnlocked, setEditUnlocked] = useState(false);
@@ -934,11 +966,13 @@ function CatalogueWorkspace({ datasets, onSync }) {
   async function handleSync() {
     setSyncing(true);
     setSyncError('');
+    setSyncMessage('');
     try {
-      await onSync();
+      const result = await onSync();
+      setSyncMessage(`Sync complete: ${result.datasetCount} datasets refreshed from Google Sheets.`);
     } catch (error) {
       console.error(error);
-      setSyncError('Sync failed. Make sure the Google Sheet can be accessed as CSV.');
+      setSyncError('Sync failed. The workbook could not be read or written to Firestore.');
     } finally {
       setSyncing(false);
     }
@@ -1004,6 +1038,7 @@ function CatalogueWorkspace({ datasets, onSync }) {
           </div>
         </div>
         {syncError ? <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-600"><AlertTriangle size={14} />{syncError}</div> : null}
+        {syncMessage ? <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-green-200 bg-green-50 px-4 py-2 text-sm font-semibold text-brand-green"><CheckCircle2 size={14} />{syncMessage}</div> : null}
 
         <div className="mt-7 grid gap-4 xl:grid-cols-7">
           <FilterField label="Industry">
@@ -1322,14 +1357,49 @@ export default function App() {
   }, [user]);
 
   async function handleSync() {
-    const response = await fetch(`https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv`);
-    if (!response.ok) throw new Error(`Sheet sync failed: ${response.status}`);
+    const [masterResponse, stageResponse] = await Promise.all([
+      fetch(`https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json&sheet=1_Data_Master_Expanded`),
+      fetch(`https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/gviz/tq?tqx=out:json&sheet=2_Project_Stage_Data`),
+    ]);
 
-    const rows = parseCsv(await response.text());
+    if (!masterResponse.ok || !stageResponse.ok) {
+      throw new Error(`Sheet sync failed: ${masterResponse.status}/${stageResponse.status}`);
+    }
+
+    const masterJson = parseGoogleSheetJson(await masterResponse.text());
+    const stageJson = parseGoogleSheetJson(await stageResponse.text());
+    const masterRows = sheetTableToObjects(masterJson.table);
+    const stageRows = sheetTableToObjects(stageJson.table);
+
+    if (masterRows.length === 0) {
+      throw new Error('No rows were returned from the master data sheet.');
+    }
+
+    const stageUsageByDataId = stageRows.reduce((accumulator, row) => {
+      const dataId = normalizeValue(row.data_id);
+      const stageName = normalizeValue(row.stage_name);
+      const usedInStage = normalizeValue(row.used_in_stage).toLowerCase();
+      const roleCode = normalizeUsageValue(row.role_code || row.stage_data_role);
+
+      if (!dataId || !stageName || usedInStage !== 'yes' || !roleCode) {
+        return accumulator;
+      }
+
+      if (!accumulator[dataId]) accumulator[dataId] = {};
+      accumulator[dataId][stageName] = roleCode;
+      return accumulator;
+    }, {});
+
     const batch = writeBatch(db);
 
-    rows.forEach((row, index) => {
-      const dataset = normaliseDataset(row, index);
+    masterRows.forEach((row, index) => {
+      const dataset = normaliseDataset(
+        {
+          ...row,
+          usage: stageUsageByDataId[normalizeValue(row.data_id)] || {},
+        },
+        index,
+      );
       if (!dataset.rawName && !dataset.commonName) return;
       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'datasets', `ds-${index}`);
       batch.set(ref, {
@@ -1342,12 +1412,13 @@ export default function App() {
         coverage: dataset.coverage,
         status: dataset.status,
         openProprietary: dataset.openProprietary,
-        usage: dataset.usage,
+        usage: stageUsageByDataId[normalizeValue(row.data_id)] || {},
         updatedAt: serverTimestamp(),
       });
     });
 
     await batch.commit();
+    return { datasetCount: masterRows.length };
   }
 
   if (loading) {
