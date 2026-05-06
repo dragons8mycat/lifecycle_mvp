@@ -554,6 +554,7 @@ function SalesWorkspace({ datasets }) {
   const [search, setSearch] = useState('');
   const [availability, setAvailability] = useState('all');
   const [dataGroup, setDataGroup] = useState('all');
+  const [roleFilter, setRoleFilter] = useState('all');
   const [selectedStage, setSelectedStage] = useState(INDUSTRY_STAGES[industries[0]][0]);
   const [selectedDatasetId, setSelectedDatasetId] = useState('');
 
@@ -572,7 +573,14 @@ function SalesWorkspace({ datasets }) {
     () => getDatasetsForIndustry(datasets, industry, { search, availability, dataGroup }),
     [availability, dataGroup, datasets, industry, search],
   );
-  const stageEntries = useMemo(() => getStageEntries(filteredDatasets, selectedStage), [filteredDatasets, selectedStage]);
+  const roleScopedDatasets = useMemo(
+    () =>
+      roleFilter === 'all'
+        ? filteredDatasets
+        : filteredDatasets.filter((dataset) => dataset.usage?.[selectedStage] === roleFilter),
+    [filteredDatasets, roleFilter, selectedStage],
+  );
+  const stageEntries = useMemo(() => getStageEntries(roleScopedDatasets, selectedStage), [roleScopedDatasets, selectedStage]);
   const primaryEntries = stageEntries.filter((entry) => entry.role !== 'U');
   const weakEntries = stageEntries.filter((entry) => entry.role === 'U');
   const selectedRecord = useMemo(
@@ -623,7 +631,7 @@ function SalesWorkspace({ datasets }) {
           </div>
         </div>
 
-        <div className="mt-7 grid gap-4 xl:grid-cols-6">
+        <div className="mt-7 grid gap-4 xl:grid-cols-7">
           <FilterField label="Industry">
             <select value={industry} onChange={(event) => setIndustry(event.target.value)} className="field-control">
               {industries.map((option) => (
@@ -668,6 +676,15 @@ function SalesWorkspace({ datasets }) {
               ))}
             </select>
           </FilterField>
+          <FilterField label="Stage role">
+            <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="field-control">
+              <option value="all">All roles</option>
+              <option value="A">Analytical</option>
+              <option value="B">Basemapping</option>
+              <option value="D">Descriptive / contextual</option>
+              <option value="U">Unknown / needs classification</option>
+            </select>
+          </FilterField>
         </div>
       </ShellCard>
 
@@ -675,9 +692,12 @@ function SalesWorkspace({ datasets }) {
         <div className="mb-3 flex items-center justify-between gap-4">
           <div>
             <div className="text-sm font-semibold text-brand-heading">{industry} lifecycle stages</div>
-            <div className="text-xs text-slate-500">The selected stage stays visible while you scan the view.</div>
+            <div className="text-xs text-slate-500">
+              The selected stage stays visible while you scan the view.
+              {roleFilter !== 'all' ? ` Filtered to ${roleLabel(roleFilter).toLowerCase()} records at this stage.` : ''}
+            </div>
           </div>
-          <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">{filteredDatasets.length} datasets in current view</div>
+          <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">{roleScopedDatasets.length} datasets in current view</div>
         </div>
         <div className="flex gap-3 overflow-x-auto pb-1">
           {stages.map((stage, index) => (
@@ -704,7 +724,7 @@ function SalesWorkspace({ datasets }) {
                 <div className="text-[11px] font-black uppercase tracking-[0.24em] text-brand-blue">Lifecycle touchpoint view</div>
                 <h3 className="mt-2 text-2xl font-black tracking-tight text-brand-navy">Comparative matrix</h3>
                 <p className="mt-2 text-sm leading-7 text-slate-500">
-                  Datasets are listed on the left, lifecycle stages run across the top, and each used touchpoint is marked by its primary role.
+                  The frozen stage rail above is the main stage reference. This matrix keeps the view cleaner by showing the dataset list once and the role markers directly under that shared rail.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -717,18 +737,17 @@ function SalesWorkspace({ datasets }) {
           <div className="overflow-x-auto">
             <table className="min-w-[1080px] w-full text-sm">
               <thead>
-                <tr className="bg-brand-blue text-white">
-                  <th className="sticky left-0 z-10 min-w-80 border-r border-white/10 bg-brand-blue px-6 py-4 text-left font-black">Dataset</th>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-500">
+                  <th className="sticky left-0 z-10 min-w-80 border-r border-slate-200 bg-slate-50 px-6 py-3 text-left text-[11px] font-black uppercase tracking-[0.18em]">Dataset</th>
                   {stages.map((stage, index) => (
-                    <th key={stage} className={`min-w-40 px-4 py-4 text-center font-black ${stage === selectedStage ? 'bg-brand-orange' : ''}`}>
-                      <div className="text-xs uppercase tracking-[0.16em] text-white/70">Stage {index + 1}</div>
-                      <div className="mt-2">{stage}</div>
+                    <th key={stage} className={`min-w-40 px-4 py-3 text-center text-[11px] font-black uppercase tracking-[0.18em] ${stage === selectedStage ? 'bg-orange-50 text-brand-orange' : ''}`}>
+                      <div>Stage {index + 1}</div>
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredDatasets.map((dataset) => (
+                {roleScopedDatasets.map((dataset) => (
                   <tr key={dataset.id}>
                     <td className="sticky left-0 z-[1] border-r border-slate-200 bg-white px-6 py-4 align-top">
                       <button type="button" onClick={() => setSelectedDatasetId(dataset.id)} className="text-left">
