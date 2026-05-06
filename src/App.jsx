@@ -47,23 +47,25 @@ const appId = 'idox-lifecycle-hub';
 const GOOGLE_SHEET_ID = '17MCi7epIJdxac0xzV2QTGGBUoL4Hi11zhzrbeRtRJXg';
 const EDIT_PASSWORD = 'test';
 
+const STANDARD_DEVELOPMENT_STAGES = [
+  'Scoping',
+  'Feasibility',
+  'Preliminary Environmental Screening',
+  'Environmental Impact Assessment (EIA)',
+  'Concept Design & Planning Application',
+  'Government & Community Approvals',
+  'Detailed Design & Engineering',
+  'Financing & Acquisition',
+  'Construction',
+  'Sales, Marketing & Handover',
+  'Post-Construction Monitoring',
+];
+
 const INDUSTRY_STAGES = {
-  Housing: [
-    'Scoping',
-    'Feasibility',
-    'Preliminary Environmental Screening',
-    'Environmental Impact Assessment (EIA)',
-    'Concept Design & Planning Application',
-    'Government & Community Approvals',
-    'Detailed Design & Engineering',
-    'Financing & Acquisition',
-    'Construction',
-    'Sales, Marketing & Handover',
-    'Post-Construction Monitoring',
-  ],
-  Solar: ['Scoping', 'Feasibility', 'Environmental Screening', 'Approvals', 'Construction'],
-  'Onshore Wind': ['Scoping', 'Feasibility', 'EIA', 'Approvals', 'Construction'],
-  'Offshore Wind': ['Scoping', 'Feasibility', 'EIA', 'Approvals', 'Detailed Design & Engineering'],
+  Housing: STANDARD_DEVELOPMENT_STAGES,
+  Solar: STANDARD_DEVELOPMENT_STAGES,
+  'Onshore Wind': STANDARD_DEVELOPMENT_STAGES,
+  'Offshore Wind': STANDARD_DEVELOPMENT_STAGES,
   Fibre: [
     'Strategic Planning (HLP)',
     'High-Level Design (HLD)',
@@ -80,6 +82,10 @@ const ROLE_ORDER = ['A', 'B', 'D'];
 
 function normalizeValue(value) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function normalizeStageName(value) {
+  return normalizeValue(value).replace(/\s+/g, ' ');
 }
 
 function normalizeStatus(rawValue) {
@@ -212,18 +218,20 @@ function normaliseDataset(input, index = 0) {
   );
 
   const usage = {};
-  const knownStages = new Set(Object.values(INDUSTRY_STAGES).flat());
+  const knownStages = new Set(Object.values(INDUSTRY_STAGES).flat().map(normalizeStageName));
   if (input.usage && typeof input.usage === 'object') {
     Object.entries(input.usage).forEach(([stageName, roleValue]) => {
-      if (!knownStages.has(stageName)) return;
+      const normalizedStageName = normalizeStageName(stageName);
+      if (!knownStages.has(normalizedStageName)) return;
       const marker = normalizeUsageValue(roleValue);
-      if (marker) usage[stageName] = marker;
+      if (marker) usage[normalizedStageName] = marker;
     });
   }
   Object.entries(input || {}).forEach(([key, value]) => {
-    if (!knownStages.has(key)) return;
+    const normalizedStageName = normalizeStageName(key);
+    if (!knownStages.has(normalizedStageName)) return;
     const marker = normalizeUsageValue(value);
-    if (marker) usage[key] = marker;
+    if (marker) usage[normalizedStageName] = marker;
   });
 
   return {
@@ -364,10 +372,10 @@ function AccessBadge({ access }) {
 
 function RoleBadge({ role }) {
   const styleMap = {
-    A: 'border-green-200 bg-green-50 text-brand-green',
+    A: 'border-green-300 bg-green-100 text-brand-green',
     B: 'border-sky-200 bg-sky-50 text-brand-blue',
-    D: 'border-brand-grey bg-slate-50 text-brand-heading',
-    U: 'border-orange-200 bg-orange-50 text-brand-orange',
+    D: 'border-green-200 bg-green-50 text-green-700',
+    U: 'border-slate-300 bg-slate-200 text-slate-600',
   };
 
   return (
@@ -381,14 +389,14 @@ function UsageMarker({ value }) {
   const styleMap = {
     A: 'bg-brand-green text-white',
     B: 'bg-brand-sky text-white',
-    D: 'bg-brand-blue text-white',
-    U: 'bg-brand-orange text-white',
+    D: 'bg-green-300 text-green-900',
+    U: 'bg-slate-300 text-slate-700',
   };
 
   return value ? (
     <div className={`flex h-8 w-8 items-center justify-center rounded-xl text-[11px] font-black ${styleMap[value]}`}>{value}</div>
   ) : (
-    <div className="h-8 w-8 rounded-xl border border-slate-200 bg-slate-50" />
+    <div className="h-8 w-8 rounded-xl border border-slate-200 bg-slate-100" />
   );
 }
 
@@ -1377,7 +1385,7 @@ export default function App() {
 
     const stageUsageByDataId = stageRows.reduce((accumulator, row) => {
       const dataId = normalizeValue(row.data_id);
-      const stageName = normalizeValue(row.stage_name);
+      const stageName = normalizeStageName(row.stage_name);
       const usedInStage = normalizeValue(row.used_in_stage).toLowerCase();
       const roleCode = normalizeUsageValue(row.role_code || row.stage_data_role);
 
