@@ -679,25 +679,24 @@ function SalesWorkspace({ datasets }) {
             </button>
           ))}
         </div>
-        <div className="mt-4 grid gap-4 border-t border-slate-100 pt-4 xl:grid-cols-2">
-          <FilterField label="Industry">
-            <select value={industry} onChange={(event) => setIndustry(event.target.value)} className="field-control">
-              {industries.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </FilterField>
-          <FilterField label="Current stage">
-            <select value={selectedStage} onChange={(event) => setSelectedStage(event.target.value)} className="field-control">
-              {stages.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </FilterField>
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <div className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Industry</div>
+          <div className="flex flex-wrap gap-3">
+            {industries.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setIndustry(option)}
+                className={`rounded-full border px-4 py-2.5 text-sm font-black tracking-tight transition ${
+                  industry === option
+                    ? 'border-brand-blue bg-brand-blue text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-brand-sky hover:text-brand-heading'
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
