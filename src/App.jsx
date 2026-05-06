@@ -312,11 +312,7 @@ function getStageEntries(datasets, stage) {
     .map((dataset) => ({
       dataset,
       role: dataset.usage[stage],
-    }))
-    .sort((left, right) => {
-      const score = { A: 4, B: 3, D: 2, U: 1 };
-      return score[right.role] - score[left.role] || left.dataset.commonName.localeCompare(right.dataset.commonName);
-    });
+    }));
 }
 
 function LogoMark() {
@@ -555,6 +551,7 @@ function SalesWorkspace({ datasets }) {
   const [availability, setAvailability] = useState('all');
   const [dataGroup, setDataGroup] = useState('all');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [salesSort, setSalesSort] = useState('role-priority');
   const [selectedStage, setSelectedStage] = useState(INDUSTRY_STAGES[industries[0]][0]);
   const [selectedDatasetId, setSelectedDatasetId] = useState('');
 
@@ -580,7 +577,20 @@ function SalesWorkspace({ datasets }) {
         : filteredDatasets.filter((dataset) => dataset.usage?.[selectedStage] === roleFilter),
     [filteredDatasets, roleFilter, selectedStage],
   );
-  const stageEntries = useMemo(() => getStageEntries(roleScopedDatasets, selectedStage), [roleScopedDatasets, selectedStage]);
+  const stageEntries = useMemo(() => {
+    const entries = getStageEntries(roleScopedDatasets, selectedStage);
+    const roleScore = { A: 4, B: 3, D: 2, U: 1 };
+
+    return [...entries].sort((left, right) => {
+      if (salesSort === 'alpha-desc') {
+        return right.dataset.commonName.localeCompare(left.dataset.commonName);
+      }
+      if (salesSort === 'alpha-asc') {
+        return left.dataset.commonName.localeCompare(right.dataset.commonName);
+      }
+      return roleScore[right.role] - roleScore[left.role] || left.dataset.commonName.localeCompare(right.dataset.commonName);
+    });
+  }, [roleScopedDatasets, selectedStage, salesSort]);
   const primaryEntries = stageEntries.filter((entry) => entry.role !== 'U');
   const weakEntries = stageEntries.filter((entry) => entry.role === 'U');
   const selectedRecord = useMemo(
@@ -727,10 +737,30 @@ function SalesWorkspace({ datasets }) {
                   The frozen stage rail above is the main stage reference. This matrix keeps the view cleaner by showing the dataset list once and the role markers directly under that shared rail.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {['A', 'B', 'D', 'U'].map((role) => (
-                  <RoleBadge key={role} role={role} />
-                ))}
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {['A', 'B', 'D', 'U'].map((role) => (
+                    <RoleBadge key={role} role={role} />
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <FilterField label="Role filter" compact>
+                    <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="field-control min-w-56">
+                      <option value="all">All roles</option>
+                      <option value="A">Analytical</option>
+                      <option value="B">Basemapping</option>
+                      <option value="D">Descriptive / contextual</option>
+                      <option value="U">Unknown / needs classification</option>
+                    </select>
+                  </FilterField>
+                  <FilterField label="Sort" compact>
+                    <select value={salesSort} onChange={(event) => setSalesSort(event.target.value)} className="field-control min-w-56">
+                      <option value="role-priority">Role priority</option>
+                      <option value="alpha-asc">Alphabetical A-Z</option>
+                      <option value="alpha-desc">Alphabetical Z-A</option>
+                    </select>
+                  </FilterField>
+                </div>
               </div>
             </div>
           </div>
@@ -780,9 +810,27 @@ function SalesWorkspace({ datasets }) {
                     Stronger lifecycle classifications are shown first so the answer stays simple and usable during client discussions.
                   </p>
                 </div>
-                <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Visible now</div>
-                  <div className="mt-2 text-3xl font-black text-brand-heading">{stageEntries.length}</div>
+                <div className="flex flex-wrap items-end gap-3">
+                  <FilterField label="Role filter" compact>
+                    <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="field-control min-w-52">
+                      <option value="all">All roles</option>
+                      <option value="A">Analytical</option>
+                      <option value="B">Basemapping</option>
+                      <option value="D">Descriptive / contextual</option>
+                      <option value="U">Unknown / needs classification</option>
+                    </select>
+                  </FilterField>
+                  <FilterField label="Sort" compact>
+                    <select value={salesSort} onChange={(event) => setSalesSort(event.target.value)} className="field-control min-w-52">
+                      <option value="role-priority">Role priority</option>
+                      <option value="alpha-asc">Alphabetical A-Z</option>
+                      <option value="alpha-desc">Alphabetical Z-A</option>
+                    </select>
+                  </FilterField>
+                  <div className="rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Visible now</div>
+                    <div className="mt-2 text-3xl font-black text-brand-heading">{stageEntries.length}</div>
+                  </div>
                 </div>
               </div>
             </ShellCard>
