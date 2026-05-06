@@ -1,522 +1,1133 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { initializeApp } from 'firebase/app';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  onSnapshot, 
+import {
+  collection,
+  doc,
+  getFirestore,
+  onSnapshot,
   query,
+  serverTimestamp,
   writeBatch,
-  serverTimestamp
 } from 'firebase/firestore';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { 
-  Users, 
-  Database, 
-  BarChart3, 
-  Search, 
-  ChevronRight, 
-  CheckCircle2, 
-  ArrowLeft,
-  X,
-  RefreshCw,
-  Loader2,
+import { getAuth, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import {
   AlertTriangle,
-  Layers,
-  Info,
+  ArrowRight,
+  BarChart3,
+  CheckCircle2,
+  Database,
   DatabaseZap,
-  Globe,
-  MapPin,
-  ExternalLink,
-  ShieldCheck,
   Filter,
-  MoreVertical
+  Layers3,
+  Loader2,
+  LockKeyhole,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Users,
+  X,
 } from 'lucide-react';
 
-// --- FIREBASE CONFIG ---
 const firebaseConfig = {
-  apiKey: "AIzaSyBYziumFk_ONDE7tVtdLFyV3L1yMGnzXj0",
-  authDomain: "idox-lifecycle.firebaseapp.com",
-  projectId: "idox-lifecycle",
-  storageBucket: "idox-lifecycle.firebasestorage.app",
-  messagingSenderId: "478383450565",
-  appId: "1:478383450565:web:f0322a22dd601404d343ac",
-  measurementId: "G-CZL52LFLEF"
+  apiKey: 'AIzaSyBYziumFk_ONDE7tVtdLFyV3L1yMGnzXj0',
+  authDomain: 'idox-lifecycle.firebaseapp.com',
+  projectId: 'idox-lifecycle',
+  storageBucket: 'idox-lifecycle.firebasestorage.app',
+  messagingSenderId: '478383450565',
+  appId: '1:478383450565:web:f0322a22dd601404d343ac',
+  measurementId: 'G-CZL52LFLEF',
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
-const appId = "idox-lifecycle-hub";
+const appId = 'idox-lifecycle-hub';
 
-// --- SYSTEM CONSTANTS ---
+const GOOGLE_SHEET_ID = '17MCi7epIJdxac0xzV2QTGGBUoL4Hi11zhzrbeRtRJXg';
+const EDIT_PASSWORD = 'test';
+
 const INDUSTRY_STAGES = {
-  'Fibre': ['Strategic Planning (HLP)', 'High-Level Design (HLD)', 'Physical Infrastructure Analysis (PIA)', 'Field Survey', 'Low Level Design (LLD)', 'Civils & Build', 'As-Built'],
-  'Housing': ['Scoping', 'Feasibility', 'Preliminary Environmental Screening', 'Environmental Impact Assessment (EIA)', 'Concept Design & Planning Application', 'Government & Community Approvals', 'Detailed Design & Engineering', 'Financing & Acquisition', 'Construction', 'Sales, Marketing & Handover', 'Post-Construction Monitoring']
+  Fibre: [
+    'Strategic Planning (HLP)',
+    'High-Level Design (HLD)',
+    'Physical Infrastructure Analysis (PIA)',
+    'Field Survey',
+    'Low Level Design (LLD)',
+    'Civils & Build',
+    'As-Built',
+  ],
+  Housing: [
+    'Scoping',
+    'Feasibility',
+    'Preliminary Environmental Screening',
+    'Environmental Impact Assessment (EIA)',
+    'Concept Design & Planning Application',
+    'Government & Community Approvals',
+    'Detailed Design & Engineering',
+    'Financing & Acquisition',
+    'Construction',
+    'Sales, Marketing & Handover',
+    'Post-Construction Monitoring',
+  ],
+  Solar: ['Scoping', 'Feasibility', 'Environmental Screening', 'Approvals', 'Construction'],
+  'Onshore Wind': ['Scoping', 'Feasibility', 'EIA', 'Approvals', 'Construction'],
+  'Offshore Wind': ['Scoping', 'Feasibility', 'EIA', 'Approvals', 'Detailed Design & Engineering'],
 };
 
-const DATA_GROUPS = ['Aviation Constraints', 'Biodiversity', 'Administrative', 'Geospatial', 'Planning & Policy', 'Environmental', 'Demographics'];
-const BUSINESS_UNITS = ['Commercial', 'Marketing', 'Product', 'Customer Success', 'GIS Team', 'Geospatial Products', 'Renewables'];
+const BUSINESS_UNITS = ['Emapsite', 'LandHawk', 'ThinkWhere', 'Backlog'];
 
-// --- UI COMPONENTS ---
+const STATUS_OPTIONS = ['all', 'catalogue', 'product', 'desired-gap', 'sme-input', 'client-request'];
+const ACCESS_OPTIONS = ['all', 'open', 'proprietary', 'mixed', 'unknown'];
 
-const IdoxLogo = () => (
-  <div className="flex items-center gap-3 font-bold tracking-tight text-left">
-    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-xl border border-slate-200">
-      <div className="w-6 h-6 border-[3px] border-[#003057] rounded-sm transform rotate-45" />
-    </div>
-    <div className="flex flex-col leading-none">
-      <span className="text-2xl text-white font-extrabold tracking-tighter">idox</span>
-      <span className="text-[10px] text-sky-400 font-black tracking-[0.2em] uppercase mt-0.5">Geospatial</span>
-    </div>
-  </div>
-);
+function normalizeValue(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
 
-const Badge = ({ children, variant = 'default' }) => {
-  const styles = {
-    default: "bg-slate-100 text-slate-600 border-slate-200",
-    success: "bg-emerald-100 text-emerald-700 border-emerald-200",
-    warning: "bg-amber-100 text-amber-700 border-amber-200",
-    blue: "bg-sky-50 text-sky-700 border-sky-100",
-    gap: "bg-orange-50 text-orange-600 border-orange-100"
+function normalizeBusinessUnit(rawValue, supplier = '', status = '') {
+  const raw = `${normalizeValue(rawValue)} ${normalizeValue(supplier)} ${normalizeValue(status)}`.toLowerCase();
+  if (raw.includes('thinkwhere')) return 'ThinkWhere';
+  if (raw.includes('landhawk')) return 'LandHawk';
+  if (raw.includes('emapsite') || raw.includes('e map site') || raw.includes('emap')) return 'Emapsite';
+  return 'Backlog';
+}
+
+function normalizeStatus(rawValue) {
+  const raw = normalizeValue(rawValue).toLowerCase();
+  if (raw.includes('product')) return 'product';
+  if (raw.includes('sme')) return 'sme-input';
+  if (raw.includes('client')) return 'client-request';
+  if (raw.includes('gap') || raw.includes('desired') || raw.includes('candidate')) return 'desired-gap';
+  return 'catalogue';
+}
+
+function normalizeAccess(rawValue) {
+  const raw = normalizeValue(rawValue).toLowerCase();
+  if (!raw) return 'unknown';
+  if (raw.includes('mixed')) return 'mixed';
+  if (raw.includes('open')) return 'open';
+  if (raw.includes('proprietary') || raw.includes('licensed') || raw.includes('paid')) return 'proprietary';
+  return 'unknown';
+}
+
+function normalizeUsageValue(rawValue) {
+  const raw = normalizeValue(rawValue).toLowerCase();
+  if (raw === 'a' || raw.includes('analytical')) return 'A';
+  if (raw === 'b' || raw.includes('basemap') || raw.includes('basemapping')) return 'B';
+  if (raw === 'd' || raw.includes('descriptive') || raw.includes('context')) return 'D';
+  if (raw === '?' || raw === 'u' || raw.includes('unknown')) return 'U';
+  return '';
+}
+
+function normalizeDataset(input, index = 0) {
+  const status = normalizeStatus(
+    input.status ||
+      input.Status ||
+      input.sourceStatus ||
+      input['Source Status'] ||
+      input['Source/Status'] ||
+      input.catalogueStatus,
+  );
+  const supplier = normalizeValue(input.supplier || input.Supplier || input.Provider);
+  const businessUnit = normalizeBusinessUnit(
+    input.businessUnit || input.BusinessUnit || input.BU || input.bu || input.Company,
+    supplier,
+    status,
+  );
+  const openProprietary = normalizeAccess(
+    input.openProprietary ||
+      input['Open / proprietary'] ||
+      input['Open/Proprietary'] ||
+      input.Access ||
+      input.Licensing,
+  );
+  const usage = {};
+
+  Object.entries(input || {}).forEach(([key, value]) => {
+    const usageValue = normalizeUsageValue(value);
+    if (usageValue && Object.values(INDUSTRY_STAGES).some((stages) => stages.includes(key))) {
+      usage[key] = usageValue;
+    }
+  });
+
+  return {
+    id: input.id || `dataset-${index}`,
+    rawName: normalizeValue(input.name || input.Name || input.Dataset || input.Dataset_Name),
+    commonName: normalizeValue(input.commonName || input['Common Name'] || input.common_name) || 'Untitled dataset',
+    group: normalizeValue(input.group || input.Group || input['Data Group']) || 'General',
+    businessUnit,
+    supplier: supplier || 'Not set',
+    description:
+      normalizeValue(input.description || input.Description) ||
+      'Governed geospatial record managed for lifecycle use across products and project stages.',
+    coverage: normalizeValue(input.coverage || input.Coverage) || 'Not stated',
+    status,
+    openProprietary,
+    usage,
+    stageCount: Object.keys(usage).length,
+    updatedAt: input.updatedAt || null,
   };
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      row.push(current);
+      current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') i += 1;
+      row.push(current);
+      if (row.some((cell) => cell.trim() !== '')) {
+        rows.push(row);
+      }
+      row = [];
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current || row.length) {
+    row.push(current);
+    rows.push(row);
+  }
+
+  if (rows.length === 0) return [];
+  const headers = rows[0].map((header) => header.trim());
+
+  return rows.slice(1).map((values) =>
+    headers.reduce((record, header, index) => {
+      record[header] = values[index]?.trim() ?? '';
+      return record;
+    }, {}),
+  );
+}
+
+function LogoMark() {
   return (
-    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${styles[variant]}`}>
+    <div className="flex items-center gap-3">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="h-5 w-5 rotate-45 rounded-[4px] border-[3px] border-[#156082]" />
+      </div>
+      <div className="leading-none">
+        <div className="text-[11px] font-black uppercase tracking-[0.32em] text-[#156082]">Idox Geospatial</div>
+        <div className="mt-2 text-2xl font-black tracking-tight text-[#0E2841]">Data Lifecycles MVP</div>
+      </div>
+    </div>
+  );
+}
+
+function ShellCard({ children, className = '' }) {
+  return (
+    <div className={`rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_60px_-40px_rgba(14,40,65,0.35)] ${className}`}>
       {children}
+    </div>
+  );
+}
+
+function StatCard({ label, value, note, icon: Icon }) {
+  return (
+    <ShellCard className="p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">{label}</div>
+          <div className="mt-3 text-3xl font-black tracking-tight text-[#0E2841]">{value}</div>
+          {note ? <div className="mt-2 text-sm font-medium text-slate-500">{note}</div> : null}
+        </div>
+        <div className="rounded-2xl bg-[#F4F8FB] p-3 text-[#156082]">
+          <Icon size={20} />
+        </div>
+      </div>
+    </ShellCard>
+  );
+}
+
+function StatusBadge({ status }) {
+  const labelMap = {
+    catalogue: 'Catalogue',
+    product: 'Product',
+    'desired-gap': 'Desired / gap',
+    'sme-input': 'SME input',
+    'client-request': 'Client request',
+  };
+
+  const styleMap = {
+    catalogue: 'border-[#D4E6EF] bg-[#F4F8FB] text-[#0F4761]',
+    product: 'border-[#D9F0DD] bg-[#F1FBF3] text-[#196B24]',
+    'desired-gap': 'border-[#F7D7C4] bg-[#FFF4EE] text-[#E97132]',
+    'sme-input': 'border-[#E6E0F3] bg-[#F7F3FD] text-[#6A4FB3]',
+    'client-request': 'border-[#F2D8DB] bg-[#FFF2F4] text-[#A63A50]',
+  };
+
+  return (
+    <span className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${styleMap[status] || styleMap.catalogue}`}>
+      {labelMap[status] || status}
     </span>
   );
-};
+}
 
-const UsageIcon = ({ type }) => {
-  const t = type?.toLowerCase();
-  if (t === 'basemap' || t === 'b') return <div title="Basemap" className="w-8 h-8 rounded-lg bg-[#007CBA] text-white flex items-center justify-center font-bold text-[11px] shadow-sm">B</div>;
-  if (t === 'analytical' || t === 'a') return <div title="Analytical" className="w-8 h-8 rounded-lg bg-[#2ECC71] text-white flex items-center justify-center font-bold text-[11px] shadow-sm">A</div>;
-  if (t === 'unknown' || t === '?') return <div title="Unknown" className="w-8 h-8 rounded-lg bg-[#F1C40F] text-white flex items-center justify-center font-bold text-[11px] shadow-sm">?</div>;
-  return <div className="w-2 h-2 rounded-full bg-slate-200 mx-auto" />;
-};
-
-// --- WORKSPACES ---
-
-const CatalogueWorkspace = ({ datasets, onSync }) => {
-  const [selected, setSelected] = useState(null);
-  const [industry, setIndustry] = useState('Housing');
-  const [search, setSearch] = useState('');
-  const [dataGroup, setDataGroup] = useState('All data groups');
-  const [unit, setUnit] = useState('All business units');
-  const [stage, setStage] = useState('All lifecycle stages');
-  const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState(null);
-
-  useEffect(() => {
-    if (datasets.length > 0 && !selected) setSelected(datasets[0]);
-  }, [datasets, selected]);
-
-  const filtered = useMemo(() => {
-    return datasets.filter(d => {
-      const matchSearch = (d.commonName || '').toLowerCase().includes(search.toLowerCase()) || 
-                          (d.name || '').toLowerCase().includes(search.toLowerCase()) ||
-                          (d.supplier || '').toLowerCase().includes(search.toLowerCase());
-      const matchGroup = dataGroup === 'All data groups' || d.group === dataGroup;
-      const matchUnit = unit === 'All business units' || d.bu === unit;
-      const matchStage = stage === 'All lifecycle stages' || (d.usage && d.usage[stage]);
-      return matchSearch && matchGroup && matchUnit && matchStage;
-    });
-  }, [datasets, search, dataGroup, unit, stage]);
-
-  const handleSync = async () => {
-    setSyncing(true);
-    setSyncError(null);
-    try {
-      await onSync();
-    } catch (e) { 
-      console.error(e);
-      setSyncError("Sync failed. Ensure your Google Sheet is 'Published to Web' as a CSV.");
-    }
-    setSyncing(false);
+function AccessBadge({ access }) {
+  const labelMap = {
+    open: 'Open',
+    proprietary: 'Proprietary',
+    mixed: 'Mixed',
+    unknown: 'Unknown',
   };
 
   return (
-    <div className="space-y-10 text-left animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* Page Heading Section (Matches image_e55380.png) */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div>
-          <span className="text-[10px] font-black text-sky-600 uppercase tracking-[0.3em] block mb-2">Data Management</span>
-          <h2 className="text-4xl font-black text-[#003057] tracking-tight">Catalogue workspace</h2>
-          <p className="text-slate-500 text-sm mt-2 max-w-2xl leading-relaxed font-medium">
-            Browse the governed non-client catalogue, switch into edit mode when records need improvement, and commit changes only when you are ready.
-          </p>
+    <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-slate-600">
+      {labelMap[access] || access}
+    </span>
+  );
+}
+
+function UsageMarker({ value }) {
+  const styles = {
+    A: 'bg-[#196B24] text-white',
+    B: 'bg-[#0F9ED5] text-white',
+    D: 'bg-[#156082] text-white',
+    U: 'bg-[#E97132] text-white',
+  };
+
+  return value ? (
+    <div className={`flex h-8 w-8 items-center justify-center rounded-xl text-[11px] font-black ${styles[value]}`}>
+      {value}
+    </div>
+  ) : (
+    <div className="h-8 w-8 rounded-xl border border-slate-200 bg-slate-50" />
+  );
+}
+
+function PasswordPrompt({ onClose, onSubmit, error }) {
+  const [password, setPassword] = useState('');
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-7 shadow-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-[11px] font-black uppercase tracking-[0.24em] text-[#156082]">Edit access</div>
+            <h3 className="mt-2 text-2xl font-black tracking-tight text-[#0E2841]">Unlock catalogue editing</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-slate-200 p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
+          >
+            <X size={16} />
+          </button>
         </div>
-        <div className="flex flex-col items-end gap-3">
-          <div className="flex gap-3">
-            <button className="px-5 py-2.5 bg-slate-50 text-slate-600 border border-slate-200 rounded-xl font-bold text-[11px] uppercase tracking-wider hover:bg-slate-100 transition-all">Open admin queue</button>
-            <button onClick={handleSync} disabled={syncing} className="px-5 py-2.5 bg-[#003057] text-white rounded-xl font-bold text-[11px] uppercase tracking-wider flex items-center gap-2 hover:bg-[#004a7a] transition-all shadow-lg shadow-[#003057]/10 disabled:opacity-50">
-               {syncing ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
-               {syncing ? 'Syncing...' : 'Sync Workbook Now'}
+        <p className="mt-3 text-sm leading-6 text-slate-500">
+          This MVP keeps edit mode behind a simple password so the governed catalogue view stays read-only by default.
+        </p>
+        <div className="mt-6">
+          <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Password</label>
+          <input
+            autoFocus
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold outline-none transition focus:border-[#156082] focus:ring-4 focus:ring-[#156082]/10"
+            placeholder="Enter edit password"
+          />
+          {error ? <div className="mt-3 text-sm font-semibold text-rose-600">{error}</div> : null}
+        </div>
+        <div className="mt-6 flex gap-3">
+          <button
+            type="button"
+            onClick={() => onSubmit(password)}
+            className="rounded-full bg-[#156082] px-5 py-2.5 text-sm font-black uppercase tracking-[0.16em] text-white transition hover:bg-[#0F4761]"
+          >
+            Unlock editing
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-slate-200 px-5 py-2.5 text-sm font-black uppercase tracking-[0.16em] text-slate-600 transition hover:border-slate-300"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CatalogueWorkspace({ datasets, onSync }) {
+  const [industry, setIndustry] = useState('Housing');
+  const [search, setSearch] = useState('');
+  const [dataGroup, setDataGroup] = useState('all');
+  const [unit, setUnit] = useState('all');
+  const [stage, setStage] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [accessFilter, setAccessFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('alpha-asc');
+  const [selectedId, setSelectedId] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState('');
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [editUnlocked, setEditUnlocked] = useState(false);
+  const [drafts, setDrafts] = useState({});
+
+  const groups = useMemo(() => Array.from(new Set(datasets.map((dataset) => dataset.group))).sort(), [datasets]);
+
+  const filteredDatasets = useMemo(() => {
+    const records = datasets.filter((dataset) => {
+      const haystack = [
+        dataset.commonName,
+        dataset.rawName,
+        dataset.supplier,
+        dataset.group,
+        dataset.businessUnit,
+        dataset.description,
+      ]
+        .join(' ')
+        .toLowerCase();
+      const matchesSearch = haystack.includes(search.toLowerCase());
+      const matchesGroup = dataGroup === 'all' || dataset.group === dataGroup;
+      const matchesUnit = unit === 'all' || dataset.businessUnit === unit;
+      const matchesStage = stage === 'all' || Boolean(dataset.usage?.[stage]);
+      const matchesStatus = statusFilter === 'all' || dataset.status === statusFilter;
+      const matchesAccess = accessFilter === 'all' || dataset.openProprietary === accessFilter;
+      return matchesSearch && matchesGroup && matchesUnit && matchesStage && matchesStatus && matchesAccess;
+    });
+
+    return records.sort((left, right) => {
+      if (sortBy === 'alpha-desc') {
+        return right.commonName.localeCompare(left.commonName);
+      }
+      if (sortBy === 'stages-desc') {
+        return right.stageCount - left.stageCount || left.commonName.localeCompare(right.commonName);
+      }
+      if (sortBy === 'status') {
+        return left.status.localeCompare(right.status) || left.commonName.localeCompare(right.commonName);
+      }
+      return left.commonName.localeCompare(right.commonName);
+    });
+  }, [accessFilter, dataGroup, datasets, search, sortBy, stage, statusFilter, unit]);
+
+  const selectedDataset = useMemo(() => {
+    return filteredDatasets.find((dataset) => dataset.id === selectedId) || filteredDatasets[0] || null;
+  }, [filteredDatasets, selectedId]);
+
+  const selectedRecord = selectedDataset ? drafts[selectedDataset.id] || selectedDataset : null;
+  const pendingChanges = Object.keys(drafts).length;
+
+  useEffect(() => {
+    if (selectedDataset && selectedDataset.id !== selectedId) {
+      setSelectedId(selectedDataset.id);
+    }
+  }, [selectedDataset, selectedId]);
+
+  useEffect(() => {
+    setStage('all');
+  }, [industry]);
+
+  const summary = useMemo(() => {
+    const openCount = datasets.filter((dataset) => dataset.openProprietary === 'open').length;
+    const proprietaryCount = datasets.filter((dataset) => dataset.openProprietary === 'proprietary').length;
+    const backlogCount = datasets.filter((dataset) => dataset.businessUnit === 'Backlog').length;
+
+    return { openCount, proprietaryCount, backlogCount };
+  }, [datasets]);
+
+  async function handleSync() {
+    setSyncing(true);
+    setSyncError('');
+    try {
+      await onSync();
+    } catch (error) {
+      console.error(error);
+      setSyncError('Sync failed. Make sure the Google Sheet can be accessed as CSV.');
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  function requestEditMode() {
+    if (editUnlocked) {
+      setEditUnlocked(false);
+      setDrafts({});
+      return;
+    }
+    setPasswordError('');
+    setShowPasswordPrompt(true);
+  }
+
+  function confirmPassword(password) {
+    if (password === EDIT_PASSWORD) {
+      setEditUnlocked(true);
+      setShowPasswordPrompt(false);
+      setPasswordError('');
+      return;
+    }
+    setPasswordError('Incorrect password. Use the agreed MVP edit password.');
+  }
+
+  function updateDraft(field, value) {
+    if (!selectedRecord) return;
+    setDrafts((current) => ({
+      ...current,
+      [selectedRecord.id]: {
+        ...selectedRecord,
+        [field]: value,
+      },
+    }));
+  }
+
+  function commitDrafts() {
+    if (pendingChanges === 0) return;
+    setDrafts({});
+  }
+
+  return (
+    <div className="space-y-8">
+      <ShellCard className="p-7">
+        <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="text-[11px] font-black uppercase tracking-[0.24em] text-[#156082]">Data user</div>
+            <h2 className="mt-3 text-4xl font-black tracking-tight text-[#0E2841]">Catalogue workspace</h2>
+            <p className="mt-3 text-sm leading-7 text-slate-500">
+              Browse the governed non-client catalogue, filter it the way a data steward actually works, and only
+              unlock editing when you explicitly need to improve the record.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSync}
+              disabled={syncing}
+              className="inline-flex items-center gap-2 rounded-full bg-[#156082] px-5 py-2.5 text-sm font-black uppercase tracking-[0.16em] text-white transition hover:bg-[#0F4761] disabled:opacity-60"
+            >
+              {syncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+              {syncing ? 'Syncing data' : 'Data sync'}
             </button>
+            <button
+              type="button"
+              onClick={requestEditMode}
+              className={`inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-black uppercase tracking-[0.16em] transition ${
+                editUnlocked
+                  ? 'border-[#E97132] bg-[#FFF4EE] text-[#E97132]'
+                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              <LockKeyhole size={15} />
+              {editUnlocked ? 'Lock editing' : 'Edit mode'}
+            </button>
+            {pendingChanges > 0 ? (
+              <button
+                type="button"
+                onClick={commitDrafts}
+                className="inline-flex items-center gap-2 rounded-full border border-[#196B24] bg-[#F1FBF3] px-5 py-2.5 text-sm font-black uppercase tracking-[0.16em] text-[#196B24]"
+              >
+                <CheckCircle2 size={15} />
+                Commit {pendingChanges} change{pendingChanges === 1 ? '' : 's'}
+              </button>
+            ) : null}
           </div>
-          {syncError && (
-            <div className="text-[10px] font-bold text-rose-500 flex items-center gap-2 animate-pulse bg-rose-50 px-3 py-1 rounded-full border border-rose-100">
-              <AlertTriangle size={12} /> {syncError}
+        </div>
+        {syncError ? (
+          <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-600">
+            <AlertTriangle size={14} />
+            {syncError}
+          </div>
+        ) : null}
+
+        <div className="mt-7 grid gap-4 xl:grid-cols-6">
+          <FilterField label="Industry">
+            <select
+              value={industry}
+              onChange={(event) => setIndustry(event.target.value)}
+              className="field-control"
+            >
+              {Object.keys(INDUSTRY_STAGES).map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+          <FilterField label="Common name" className="xl:col-span-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="field-control pl-10"
+                placeholder="Search common name, supplier, raw name, or description"
+              />
             </div>
-          )}
+          </FilterField>
+          <FilterField label="Data group">
+            <select value={dataGroup} onChange={(event) => setDataGroup(event.target.value)} className="field-control">
+              <option value="all">All data groups</option>
+              {groups.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+          <FilterField label="Business unit">
+            <select value={unit} onChange={(event) => setUnit(event.target.value)} className="field-control">
+              <option value="all">All business units</option>
+              {BUSINESS_UNITS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </FilterField>
+          <FilterField label="Lifecycle stage">
+            <select value={stage} onChange={(event) => setStage(event.target.value)} className="field-control">
+              <option value="all">All lifecycle stages</option>
+              {INDUSTRY_STAGES[industry].map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </FilterField>
         </div>
+      </ShellCard>
+
+      <div className="grid gap-5 xl:grid-cols-4">
+        <StatCard label="Visible records" value={filteredDatasets.length} note="Filtered catalogue items" icon={Database} />
+        <StatCard label="Open datasets" value={summary.openCount} note="Clearly marked as open" icon={ShieldCheck} />
+        <StatCard label="Proprietary datasets" value={summary.proprietaryCount} note="Licensed or supplier-managed" icon={Layers3} />
+        <StatCard label="Backlog items" value={summary.backlogCount} note="Not yet tied to a platform company" icon={Sparkles} />
       </div>
 
-      {/* Filter Strip */}
-      <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-        <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] block ml-1">Common name</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input 
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-4 focus:ring-sky-500/10 outline-none transition-all placeholder:text-slate-300"
-              placeholder="Search common name, supplier..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
+      <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
+        <ShellCard className="overflow-hidden">
+          <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-5 xl:flex-row xl:items-end xl:justify-between">
+            <div>
+              <div className="text-[11px] font-black uppercase tracking-[0.24em] text-[#156082]">Catalogue records</div>
+              <div className="mt-2 text-sm text-slate-500">Wider records table with access type, company ownership, and faster governance filters.</div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <FilterField label="Access type" compact>
+                <select value={accessFilter} onChange={(event) => setAccessFilter(event.target.value)} className="field-control">
+                  {ACCESS_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option === 'all' ? 'All types' : option.charAt(0).toUpperCase() + option.slice(1)}
+                    </option>
+                  ))}
+                </select>
+              </FilterField>
+              <FilterField label="Status" compact>
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="field-control">
+                  {STATUS_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option === 'all'
+                        ? 'All statuses'
+                        : option === 'desired-gap'
+                          ? 'Desired / gap'
+                          : option === 'sme-input'
+                            ? 'SME input'
+                            : option === 'client-request'
+                              ? 'Client request'
+                              : option.charAt(0).toUpperCase() + option.slice(1)}
+                    </option>
+                  ))}
+                </select>
+              </FilterField>
+              <FilterField label="Sort" compact>
+                <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="field-control">
+                  <option value="alpha-asc">Alphabetical A-Z</option>
+                  <option value="alpha-desc">Alphabetical Z-A</option>
+                  <option value="stages-desc">Most stages first</option>
+                  <option value="status">Status</option>
+                </select>
+              </FilterField>
+            </div>
           </div>
-        </div>
-        <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] block ml-1">Data group</label>
-          <select className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" value={dataGroup} onChange={e => setDataGroup(e.target.value)}>
-            <option>All data groups</option>
-            {DATA_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-          </select>
-        </div>
-        <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] block ml-1">Business unit</label>
-          <select className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" value={unit} onChange={e => setUnit(e.target.value)}>
-            <option>All business units</option>
-            {BUSINESS_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-          </select>
-        </div>
-        <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] block ml-1">Lifecycle stage</label>
-          <select className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" value={stage} onChange={e => setStage(e.target.value)}>
-            <option>All lifecycle stages</option>
-            {INDUSTRY_STAGES[industry].map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-      </div>
 
-      {/* Main Grid Split View */}
-      <div className="flex flex-col lg:flex-row gap-10 items-start">
-        {/* Table Column */}
-        <div className="flex-1 bg-white rounded-[2.5rem] border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-8 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-            <h3 className="text-[11px] font-black text-[#003057] uppercase tracking-widest flex items-center gap-2">
-              <Layers size={14} className="text-sky-500" /> Catalogue Records
-            </h3>
-            <span className="text-[10px] font-bold text-slate-400 bg-white px-2.5 py-1 rounded-full border border-slate-100 shadow-sm">{filtered.length} visible</span>
-          </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-slate-50/50 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] border-b border-slate-100">
-                <tr>
-                  <th className="px-8 py-5">Common Name</th>
-                  <th className="px-8 py-5">Data Group</th>
-                  <th className="px-8 py-5">Supplier</th>
-                  <th className="px-8 py-5">BU</th>
-                  <th className="px-8 py-5 text-center">Stages</th>
-                  <th className="px-8 py-5">Status</th>
+            <table className="min-w-full text-left">
+              <thead className="border-b border-slate-200 bg-slate-50">
+                <tr className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                  <th className="px-6 py-4">Common name</th>
+                  <th className="px-6 py-4">Raw name</th>
+                  <th className="px-6 py-4">Data group</th>
+                  <th className="px-6 py-4">Supplier</th>
+                  <th className="px-6 py-4">Business unit</th>
+                  <th className="px-6 py-4">Open / proprietary</th>
+                  <th className="px-6 py-4 text-center">Stages</th>
+                  <th className="px-6 py-4">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.length === 0 ? (
-                  <tr><td colSpan="6" className="px-8 py-20 text-center text-slate-400 font-medium italic">No records found. Push the sync button to pull data.</td></tr>
+                {filteredDatasets.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" className="px-6 py-20 text-center text-sm font-semibold text-slate-400">
+                      No records match the current filters.
+                    </td>
+                  </tr>
                 ) : (
-                  filtered.map(d => (
-                    <tr 
-                      key={d.id} 
-                      onClick={() => setSelected(d)}
-                      className={`hover:bg-sky-50/40 transition-all cursor-pointer group ${selected?.id === d.id ? 'bg-sky-50' : ''}`}
-                    >
-                      <td className="px-8 py-5">
-                        <div className="font-extrabold text-[#003057] group-hover:text-sky-600 transition-colors text-base tracking-tight">{d.commonName || 'Untitled Dataset'}</div>
-                        <div className="text-[10px] text-slate-400 mt-1 font-mono uppercase tracking-tighter opacity-70 leading-none">{d.name}</div>
-                      </td>
-                      <td className="px-8 py-5 text-xs text-slate-500 font-bold">{d.group}</td>
-                      <td className="px-8 py-5 text-xs text-slate-500 font-bold">{d.supplier || 'Idox / Local Auth'}</td>
-                      <td className="px-8 py-5 text-xs text-slate-500 font-bold">{d.bu}</td>
-                      <td className="px-8 py-5 text-center font-bold text-xs text-[#003057]">{Object.keys(d.usage || {}).length}</td>
-                      <td className="px-8 py-5">
-                        <Badge variant="warning">Desired / Gap</Badge>
-                      </td>
-                    </tr>
-                  ))
+                  filteredDatasets.map((dataset) => {
+                    const isSelected = selectedRecord?.id === dataset.id;
+                    const hasDraft = Boolean(drafts[dataset.id]);
+
+                    return (
+                      <tr
+                        key={dataset.id}
+                        onClick={() => setSelectedId(dataset.id)}
+                        className={`cursor-pointer transition ${
+                          isSelected ? 'bg-[#F4F8FB]' : 'hover:bg-slate-50'
+                        } ${hasDraft ? 'ring-1 ring-inset ring-[#E97132]/30' : ''}`}
+                      >
+                        <td className="px-6 py-5 align-top">
+                          <div className="text-base font-black tracking-tight text-[#0E2841]">{dataset.commonName}</div>
+                          <div className="mt-1 text-sm text-slate-500">{dataset.description.slice(0, 78)}{dataset.description.length > 78 ? '…' : ''}</div>
+                        </td>
+                        <td className="px-6 py-5 align-top text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          {dataset.rawName || 'Not supplied'}
+                        </td>
+                        <td className="px-6 py-5 align-top text-sm font-semibold text-slate-600">{dataset.group}</td>
+                        <td className="px-6 py-5 align-top text-sm font-semibold text-slate-600">{dataset.supplier}</td>
+                        <td className="px-6 py-5 align-top text-sm font-semibold text-slate-600">{dataset.businessUnit}</td>
+                        <td className="px-6 py-5 align-top">
+                          <AccessBadge access={dataset.openProprietary} />
+                        </td>
+                        <td className="px-6 py-5 align-top text-center text-sm font-black text-[#0E2841]">{dataset.stageCount}</td>
+                        <td className="px-6 py-5 align-top">
+                          <StatusBadge status={dataset.status} />
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
-        </div>
+        </ShellCard>
 
-        {/* Sidebar Intelligence Panel */}
-        <div className="w-full lg:w-[480px] bg-white rounded-[3rem] border border-slate-200 shadow-xl sticky top-32 overflow-hidden ring-1 ring-slate-100">
-          {selected ? (
-            <div className="p-12 space-y-10 animate-in fade-in duration-500">
-              <div className="flex justify-between items-start">
-                <div className="space-y-1">
-                   <Badge variant="blue">Record intelligence</Badge>
-                   <h3 className="text-3xl font-black text-[#003057] mt-4 tracking-tight leading-none">{selected.commonName}</h3>
-                   <div className="text-[11px] font-mono text-slate-400 mt-2 flex items-center gap-2">
-                     <Database size={10} /> {selected.name}
-                   </div>
+        <ShellCard className="sticky top-24 self-start p-7">
+          {selectedRecord ? (
+            <>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[11px] font-black uppercase tracking-[0.24em] text-[#156082]">
+                    {editUnlocked ? 'Editable record' : 'Record detail'}
+                  </div>
+                  <h3 className="mt-3 text-3xl font-black tracking-tight text-[#0E2841]">{selectedRecord.commonName}</h3>
+                  <div className="mt-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">{selectedRecord.rawName || 'No raw source name supplied'}</div>
                 </div>
-                <div className="w-12 h-12 bg-slate-50 text-slate-300 rounded-2xl flex items-center justify-center border border-slate-100"><Info size={24} /></div>
+                <StatusBadge status={selectedRecord.status} />
               </div>
 
-              <div className="space-y-4">
-                 <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block">Core Description</label>
-                 <p className="text-sm text-slate-500 leading-relaxed font-semibold">
-                   {selected.description || "Comprehensive geospatial intelligence record managed under the Idox Strategic Data Governance framework."}
-                 </p>
-              </div>
+              <p className="mt-5 text-sm leading-7 text-slate-500">{selectedRecord.description}</p>
 
-              <div className="grid grid-cols-2 gap-y-10 gap-x-6 pt-10 border-t border-slate-100">
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block">Data Group</label>
-                  <div className="text-xs font-black text-[#003057]">{selected.group}</div>
+              {editUnlocked ? (
+                <div className="mt-7 space-y-4">
+                  <EditableField label="Common name">
+                    <input
+                      value={selectedRecord.commonName}
+                      onChange={(event) => updateDraft('commonName', event.target.value)}
+                      className="field-control"
+                    />
+                  </EditableField>
+                  <EditableField label="Description">
+                    <textarea
+                      value={selectedRecord.description}
+                      onChange={(event) => updateDraft('description', event.target.value)}
+                      className="field-control min-h-[110px]"
+                    />
+                  </EditableField>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <EditableField label="Data group">
+                      <input value={selectedRecord.group} onChange={(event) => updateDraft('group', event.target.value)} className="field-control" />
+                    </EditableField>
+                    <EditableField label="Supplier">
+                      <input value={selectedRecord.supplier} onChange={(event) => updateDraft('supplier', event.target.value)} className="field-control" />
+                    </EditableField>
+                    <EditableField label="Business unit">
+                      <select value={selectedRecord.businessUnit} onChange={(event) => updateDraft('businessUnit', event.target.value)} className="field-control">
+                        {BUSINESS_UNITS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </EditableField>
+                    <EditableField label="Open / proprietary">
+                      <select value={selectedRecord.openProprietary} onChange={(event) => updateDraft('openProprietary', event.target.value)} className="field-control">
+                        {ACCESS_OPTIONS.filter((option) => option !== 'all').map((option) => (
+                          <option key={option} value={option}>
+                            {option.charAt(0).toUpperCase() + option.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                    </EditableField>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block">Supplier</label>
-                  <div className="text-xs font-black text-[#003057]">{selected.supplier || 'Proprietary / Partners'}</div>
+              ) : (
+                <div className="mt-7 grid gap-5 md:grid-cols-2">
+                  <DetailItem label="Data group" value={selectedRecord.group} />
+                  <DetailItem label="Supplier" value={selectedRecord.supplier} />
+                  <DetailItem label="Business unit" value={selectedRecord.businessUnit} />
+                  <DetailItem label="Coverage" value={selectedRecord.coverage} />
+                  <DetailItem label="Access type" value={selectedRecord.openProprietary} />
+                  <DetailItem label="Status" value={selectedRecord.status.replace('-', ' ')} />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block">Coverage</label>
-                  <div className="text-xs font-black text-[#003057]">Great Britain (GB)</div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[9px] font-black uppercase text-slate-400 tracking-widest block">Business Unit</label>
-                  <div className="text-xs font-black text-[#003057]">{selected.bu}</div>
-                </div>
-              </div>
+              )}
 
-              <div className="space-y-6 pt-10 border-t border-slate-100">
-                 <div className="flex justify-between items-center">
-                   <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest block">Lifecycle Touchpoints</label>
-                   <span className="text-[9px] font-black text-sky-600 bg-sky-50 px-2.5 py-1 rounded-lg uppercase border border-sky-100">{industry} Framework</span>
-                 </div>
-                 <div className="space-y-3 max-h-[350px] overflow-y-auto pr-3 custom-scrollbar">
-                   {INDUSTRY_STAGES[industry].map(s => (
-                     <div key={s} className="flex items-center justify-between p-5 bg-slate-50/50 rounded-2xl border border-slate-100 transition-all hover:border-sky-300 hover:bg-sky-50/20 group">
-                       <span className="text-[11px] font-extrabold text-slate-600 group-hover:text-sky-700 transition-colors pr-6">{s}</span>
-                       <UsageIcon type={selected.usage?.[s]} />
-                     </div>
-                   ))}
-                 </div>
+              <div className="mt-8 border-t border-slate-100 pt-7">
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Lifecycle touchpoints</div>
+                    <div className="mt-2 text-sm font-semibold text-[#0E2841]">{industry} stages</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                    <Legend label="A" description="Analytical" />
+                    <Legend label="B" description="Basemapping" />
+                    <Legend label="D" description="Descriptive" />
+                    <Legend label="U" description="Unknown" />
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {INDUSTRY_STAGES[industry].map((stageName) => (
+                    <div key={stageName} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="pr-4 text-sm font-semibold text-slate-600">{stageName}</div>
+                      <UsageMarker value={selectedRecord.usage?.[stageName]} />
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            </>
           ) : (
-            <div className="p-32 text-center flex flex-col items-center justify-center space-y-6 grayscale opacity-30">
-              <Layers size={80} strokeWidth={1.5} className="text-slate-200" />
-              <p className="text-xs font-black text-slate-400 uppercase tracking-[0.3em]">Select record for intelligence</p>
+            <div className="py-16 text-center">
+              <Database className="mx-auto text-slate-200" size={56} />
+              <div className="mt-4 text-sm font-semibold text-slate-400">Select a record to inspect it.</div>
             </div>
           )}
+        </ShellCard>
+      </div>
+
+      {showPasswordPrompt ? (
+        <PasswordPrompt
+          error={passwordError}
+          onClose={() => {
+            setPasswordError('');
+            setShowPasswordPrompt(false);
+          }}
+          onSubmit={confirmPassword}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function FilterField({ label, children, className = '', compact = false }) {
+  return (
+    <div className={className}>
+      <label className={`mb-2 block font-black uppercase tracking-[0.18em] text-slate-400 ${compact ? 'text-[10px]' : 'text-[11px]'}`}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function DetailItem({ label, value }) {
+  return (
+    <div>
+      <div className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</div>
+      <div className="mt-2 text-sm font-semibold capitalize text-[#0E2841]">{value}</div>
+    </div>
+  );
+}
+
+function EditableField({ label, children }) {
+  return (
+    <div className="rounded-3xl border border-[#F7D7C4] bg-[#FFF8F4] p-4">
+      <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function Legend({ label, description }) {
+  return (
+    <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1">
+      <span className="font-black text-[#0E2841]">{label}</span>
+      <span>{description}</span>
+    </span>
+  );
+}
+
+function OverviewPage({ datasets, onOpenRole }) {
+  const totalStages = Object.values(INDUSTRY_STAGES).reduce((count, stages) => count + stages.length, 0);
+  const groupedCounts = useMemo(
+    () => ({
+      backlog: datasets.filter((dataset) => dataset.businessUnit === 'Backlog').length,
+      open: datasets.filter((dataset) => dataset.openProprietary === 'open').length,
+      governed: datasets.filter((dataset) => dataset.status === 'catalogue').length,
+    }),
+    [datasets],
+  );
+
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <ShellCard className="p-8">
+          <div className="max-w-3xl">
+            <div className="text-[11px] font-black uppercase tracking-[0.24em] text-[#156082]">Overview</div>
+            <h1 className="mt-3 text-5xl font-black tracking-tight text-[#0E2841]">
+              Governed lifecycle insight for sales, data, and leadership teams.
+            </h1>
+            <p className="mt-5 text-base leading-8 text-slate-500">
+              This Firebase-backed MVP turns the workbook into a working internal product. It helps teams understand
+              which geospatial datasets matter at each stage, where the governed catalogue is strong, and where the
+              next data gaps should be addressed.
+            </p>
+          </div>
+          <div className="mt-8 flex flex-wrap gap-4">
+            <button
+              type="button"
+              onClick={() => onOpenRole('sales')}
+              className="rounded-full bg-[#156082] px-6 py-3 text-sm font-black uppercase tracking-[0.16em] text-white transition hover:bg-[#0F4761]"
+            >
+              Open sales view
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenRole('data')}
+              className="rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-black uppercase tracking-[0.16em] text-slate-700 transition hover:border-slate-300"
+            >
+              Open data view
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenRole('leadership')}
+              className="rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-black uppercase tracking-[0.16em] text-slate-700 transition hover:border-slate-300"
+            >
+              Open leadership view
+            </button>
+          </div>
+        </ShellCard>
+
+        <div className="grid gap-5">
+          <StatCard label="Synced records" value={datasets.length} note="Live from Firestore" icon={DatabaseZap} />
+          <StatCard label="Lifecycle stages modelled" value={totalStages} note="Across current industry templates" icon={Layers3} />
         </div>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-3">
+        <WorkspaceCard
+          eyebrow="Sales"
+          title="Stage-first answers"
+          description="Built for faster client conversations, with lifecycle touchpoints and clearer role meaning per stage."
+          icon={Users}
+          onClick={() => onOpenRole('sales')}
+        />
+        <WorkspaceCard
+          eyebrow="Data"
+          title="Governed catalogue workspace"
+          description="Search, filter, inspect, and improve records with edit access deliberately controlled."
+          icon={Database}
+          onClick={() => onOpenRole('data')}
+        />
+        <WorkspaceCard
+          eyebrow="Leadership"
+          title="Portfolio gap insight"
+          description="See where catalogue value is strongest and which candidate data should be prioritised next."
+          icon={BarChart3}
+          onClick={() => onOpenRole('leadership')}
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-3">
+        <StatCard label="Catalogue records" value={groupedCounts.governed} note="Currently mapped as governed" icon={ShieldCheck} />
+        <StatCard label="Open records" value={groupedCounts.open} note="Available without proprietary licensing" icon={Sparkles} />
+        <StatCard label="Backlog candidates" value={groupedCounts.backlog} note="Not yet assigned to a platform company" icon={Filter} />
       </div>
     </div>
   );
-};
+}
 
-// --- MAIN APPLICATION ENTRY ---
+function WorkspaceCard({ eyebrow, title, description, icon: Icon, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left"
+    >
+      <ShellCard className="h-full p-6 transition hover:-translate-y-0.5 hover:border-[#0F9ED5]">
+        <div className="flex items-start justify-between gap-4">
+          <div className="rounded-2xl bg-[#F4F8FB] p-3 text-[#156082]">
+            <Icon size={20} />
+          </div>
+          <ArrowRight size={18} className="text-slate-300" />
+        </div>
+        <div className="mt-6 text-[11px] font-black uppercase tracking-[0.24em] text-[#156082]">{eyebrow}</div>
+        <h3 className="mt-3 text-2xl font-black tracking-tight text-[#0E2841]">{title}</h3>
+        <p className="mt-3 text-sm leading-7 text-slate-500">{description}</p>
+      </ShellCard>
+    </button>
+  );
+}
+
+function PlaceholderWorkspace({ title, description }) {
+  return (
+    <ShellCard className="p-10">
+      <div className="mx-auto max-w-3xl text-center">
+        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[28px] bg-[#F4F8FB] text-[#156082]">
+          <BarChart3 size={32} />
+        </div>
+        <h2 className="mt-6 text-4xl font-black tracking-tight text-[#0E2841]">{title}</h2>
+        <p className="mt-4 text-base leading-8 text-slate-500">{description}</p>
+      </div>
+    </ShellCard>
+  );
+}
 
 export default function App() {
-  const [role, setRole] = useState(null);
+  const [role, setRole] = useState('overview');
   const [datasets, setDatasets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
 
-  // Initialize and handle authentication
   useEffect(() => {
     signInAnonymously(auth).catch(console.error);
     return onAuthStateChanged(auth, setUser);
   }, []);
 
-  // Listen to Firestore
   useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'datasets'));
-    return onSnapshot(q, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setDatasets(data);
-      setLoading(false);
-    }, (err) => {
-      console.error(err);
-      setLoading(false);
-    });
+    if (!user) return undefined;
+    const datasetsQuery = query(collection(db, 'artifacts', appId, 'public', 'data', 'datasets'));
+
+    return onSnapshot(
+      datasetsQuery,
+      (snapshot) => {
+        const nextDatasets = snapshot.docs.map((docSnapshot, index) =>
+          normalizeDataset({ id: docSnapshot.id, ...docSnapshot.data() }, index),
+        );
+        setDatasets(nextDatasets);
+        setLoading(false);
+      },
+      (error) => {
+        console.error(error);
+        setLoading(false);
+      },
+    );
   }, [user]);
 
-  const handleSync = async () => {
-    // UPDATED: Using the direct PUB URL which is more resilient to 400 errors for anonymous fetch
-    const SHEET_ID = '17MCi7epIJdxac0xzV2QTGGBUoL4Hi11zhzrbeRtRJXg';
-    const url = `https://docs.google.com/spreadsheets/d/e/2PACX-1vQvqmCMo2ZAYVFcecyAA-yYJTJLMOM9ckKQJcXXOR7nrORVli5eduEVw6tiBpMck7UPaPtTg9/pub?output=csv`;
-    
-    const parseCSV = (text) => {
-      const lines = text.split('\n').filter(line => line.trim() !== '');
-      if (lines.length === 0) return [];
-      const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-      return lines.slice(1).map(line => {
-        // Robust regex to split by comma while respecting quotes
-        const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
-        const cleanValues = values.map(v => v.trim().replace(/^"|"$/g, ''));
-        return headers.reduce((obj, header, index) => {
-          obj[header] = cleanValues[index];
-          return obj;
-        }, {});
-      });
-    };
+  async function handleSync() {
+    const response = await fetch(`https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv`);
+    if (!response.ok) {
+      throw new Error(`Sheet sync failed: ${response.status}`);
+    }
 
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("Sync failed with status: " + res.status);
-    
-    const text = await res.text();
-    const rows = parseCSV(text);
-    
+    const csvText = await response.text();
+    const rows = parseCsv(csvText);
     const batch = writeBatch(db);
-    rows.forEach((row, i) => {
-      const name = row.Name || row.name || row.Dataset || row.Dataset_Name;
-      if (!name) return;
-      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'datasets', `ds-${i}`);
-      const usage = {};
-      Object.keys(row).forEach(key => {
-        const val = row[key]?.trim().toLowerCase();
-        if (val === 'b' || val === 'a' || val === '?') usage[key] = val;
-      });
+
+    rows.forEach((row, index) => {
+      const normalised = normalizeDataset(row, index);
+      if (!normalised.rawName && !normalised.commonName) return;
+
+      const ref = doc(db, 'artifacts', appId, 'public', 'data', 'datasets', `ds-${index}`);
       batch.set(ref, {
-        name,
-        commonName: row['Common Name'] || row.common_name || '',
-        group: row.Group || row.group || row['Data Group'] || 'General',
-        bu: row.BU || row.BusinessUnit || 'Geospatial',
-        supplier: row.Supplier || row.supplier || '',
-        description: row.Description || row.description || '',
-        usage,
-        updatedAt: serverTimestamp()
+        name: normalised.rawName,
+        commonName: normalised.commonName,
+        group: normalised.group,
+        businessUnit: normalised.businessUnit,
+        supplier: normalised.supplier,
+        description: normalised.description,
+        coverage: normalised.coverage,
+        status: normalised.status,
+        openProprietary: normalised.openProprietary,
+        usage: normalised.usage,
+        updatedAt: serverTimestamp(),
       });
     });
-    await batch.commit();
-  };
 
-  if (loading) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-[#003057] gap-10">
-       <div className="relative">
-         <div className="w-20 h-20 border-4 border-sky-500/20 rounded-full" />
-         <div className="w-20 h-20 border-4 border-sky-400 border-t-transparent rounded-full animate-spin absolute top-0 left-0" />
-       </div>
-       <div className="flex flex-col items-center gap-3">
-         <span className="text-[11px] font-black uppercase text-sky-400 tracking-[0.6em] animate-pulse">Idox Geospatial Hub</span>
-         <span className="text-[10px] text-white/40 font-bold uppercase tracking-widest">Establishing Secure Session</span>
-       </div>
-    </div>
-  );
+    await batch.commit();
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-[#F7FAFC]">
+        <div className="flex h-20 w-20 items-center justify-center rounded-[28px] border border-slate-200 bg-white shadow-sm">
+          <Loader2 className="animate-spin text-[#156082]" size={28} />
+        </div>
+        <div className="text-center">
+          <div className="text-[11px] font-black uppercase tracking-[0.28em] text-[#156082]">Idox Geospatial</div>
+          <div className="mt-3 text-2xl font-black tracking-tight text-[#0E2841]">Establishing secure session</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex flex-col text-left">
-      <header className="bg-[#003057] text-white px-12 py-8 flex justify-between items-center sticky top-0 z-50 shadow-2xl ring-1 ring-white/10">
-        <div className="flex items-center gap-20">
-          <button onClick={() => setRole(null)} className="hover:scale-105 transition-transform"><IdoxLogo /></button>
-          <nav className="hidden lg:flex gap-2">
-            {['Sales', 'Data', 'Leadership'].map(r => (
-              <button 
-                key={r} 
-                onClick={() => setRole(r.toLowerCase())}
-                className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] transition-all ${role === r.toLowerCase() ? 'bg-sky-500 text-white shadow-xl ring-4 ring-sky-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+    <div className="min-h-screen bg-[#F7FAFC] text-left text-slate-900">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/92 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-[1880px] flex-col gap-6 px-6 py-5 xl:px-10">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <LogoMark />
+            <div className="rounded-[24px] border border-slate-200 bg-slate-50 px-5 py-3 text-right">
+              <div className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Current view</div>
+              <div className="mt-2 text-base font-black capitalize tracking-tight text-[#0E2841]">{role}</div>
+            </div>
+          </div>
+          <nav className="flex flex-wrap gap-3">
+            {['overview', 'sales', 'data', 'leadership'].map((navRole) => (
+              <button
+                key={navRole}
+                type="button"
+                onClick={() => setRole(navRole)}
+                className={`rounded-full px-5 py-2.5 text-sm font-black uppercase tracking-[0.16em] transition ${
+                  role === navRole
+                    ? 'bg-[#156082] text-white'
+                    : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                }`}
               >
-                {r === 'Data' ? 'Data Management' : r}
+                {navRole}
               </button>
             ))}
           </nav>
         </div>
-        <div className="flex items-center gap-8">
-          <div className="flex flex-col items-end mr-2 text-right">
-            <span className="text-[9px] font-black text-sky-400 uppercase tracking-widest leading-none mb-1.5">Security Status</span>
-            <span className="text-[12px] font-bold text-white leading-none">Strategic Intelligence Hub</span>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-sky-500 flex items-center justify-center text-white font-black text-base shadow-xl ring-4 ring-white/10 select-none">ID</div>
-        </div>
       </header>
 
-      <main className="flex-1 max-w-[1600px] mx-auto p-12 md:p-20 w-full">
-        {!role ? (
-          <div className="grid lg:grid-cols-2 gap-32 py-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-             <div className="flex flex-col justify-center text-left">
-                <div className="w-20 h-2 bg-sky-500 rounded-full mb-10" />
-                <h1 className="text-8xl font-black text-[#003057] mb-10 leading-[0.9] tracking-tighter">
-                  Strategic <br/>Intelligence Hub
-                </h1>
-                <p className="text-2xl text-slate-500 mb-16 font-semibold leading-relaxed max-w-xl">
-                   Governed lifecycle insight for sales, data, and leadership teams. Centralizing geospatial availability across the business.
-                </p>
-                <div className="flex gap-6">
-                  <button onClick={() => setRole('sales')} className="bg-[#003057] text-white px-12 py-6 rounded-3xl font-black text-xs uppercase tracking-widest shadow-2xl hover:translate-y-[-4px] hover:bg-[#004a7a] transition-all flex items-center gap-4">
-                    Commercial View <ChevronRight size={20}/>
-                  </button>
-                  <button onClick={() => setRole('data')} className="bg-white text-[#003057] border-2 border-slate-200 px-12 py-6 rounded-3xl font-black text-xs uppercase tracking-widest shadow-sm hover:bg-slate-50 transition-all">
-                    Catalogue Admin
-                  </button>
-                </div>
-             </div>
-             <div className="bg-white p-20 rounded-[5rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.1)] border border-slate-100 flex flex-col items-center justify-center text-center relative overflow-hidden group">
-               <div className="absolute inset-0 bg-sky-500/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-               <div className="w-32 h-32 bg-sky-100 text-sky-600 rounded-[3rem] flex items-center justify-center mb-10 ring-[12px] ring-sky-50 transition-transform group-hover:scale-110 duration-700">
-                 <DatabaseZap size={56} />
-               </div>
-               <h3 className="text-4xl font-black text-[#003057] mb-4 tracking-tight">{datasets.length} Active Records</h3>
-               <p className="text-slate-400 font-black text-xs uppercase tracking-[0.3em]">Master Product Intelligence</p>
-               <div className="mt-12 flex gap-3 items-center">
-                 <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-                 <span className="text-[11px] font-black text-emerald-600 uppercase tracking-widest">Global Sync Status</span>
-               </div>
-             </div>
-          </div>
-        ) : (
-          <div className="space-y-12">
-            <div className="flex items-center gap-6 mb-12">
-              <button onClick={() => setRole(null)} className="p-4 bg-white rounded-2xl text-slate-400 hover:bg-slate-50 border border-slate-200 shadow-sm transition-all group">
-                <ArrowLeft size={24} className="group-hover:-translate-x-1 transition-transform" />
-              </button>
-              <div className="h-10 w-px bg-slate-300 mx-2" />
-              <div className="text-left">
-                <span className="text-[10px] font-black uppercase text-slate-400 tracking-[0.5em] block leading-none mb-2 text-left">Workspace View</span>
-                <span className="text-2xl font-black text-[#003057] uppercase tracking-tighter leading-none capitalize text-left">{role} workspace</span>
-              </div>
-            </div>
-            {role === 'data' ? (
-              <CatalogueWorkspace datasets={datasets} onSync={handleSync} />
-            ) : (
-              <div className="bg-white p-40 rounded-[5rem] border border-slate-200 shadow-sm text-center flex flex-col items-center gap-10 animate-in fade-in zoom-in-95 duration-1000">
-                <div className="w-32 h-32 bg-slate-50 rounded-[3rem] flex items-center justify-center text-slate-200 border-2 border-slate-100 mb-6">
-                  <BarChart3 size={60} />
-                </div>
-                <h3 className="text-4xl font-black text-[#003057] uppercase tracking-tight leading-none">Intelligence Dashboard</h3>
-                <p className="text-slate-400 font-black uppercase tracking-[0.4em] text-[11px] max-w-sm mx-auto leading-loose">
-                   Strategic commercial reporting is currently being compiled from the live workbook.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
+      <main className="mx-auto w-full max-w-[1880px] px-6 py-8 xl:px-10">
+        {role === 'overview' ? <OverviewPage datasets={datasets} onOpenRole={setRole} /> : null}
+        {role === 'data' ? <CatalogueWorkspace datasets={datasets} onSync={handleSync} /> : null}
+        {role === 'sales' ? (
+          <PlaceholderWorkspace
+            title="Sales stage finder"
+            description="The cleaned shell and data model are now in place. The next pass can bring the lifecycle touchpoint and role-led sales views back into this Firebase-backed app using the same governed records."
+          />
+        ) : null}
+        {role === 'leadership' ? (
+          <PlaceholderWorkspace
+            title="Leadership insight"
+            description="This surface is ready for prioritisation and gap analysis once the stage-first catalogue mappings are fully reintroduced from the workbook model."
+          />
+        ) : null}
       </main>
-
-      <footer className="bg-white border-t border-slate-200 py-16 px-20 flex flex-col md:flex-row justify-between items-center gap-12 mt-32 text-left">
-        <div className="flex items-center gap-6 opacity-40 grayscale group hover:grayscale-0 hover:opacity-100 transition-all cursor-default">
-          <div className="w-10 h-10 border-[4px] border-[#003057] rounded-sm transform rotate-45 transition-transform group-hover:rotate-[225deg] duration-1000" />
-          <div className="flex flex-col">
-            <span className="text-sm font-black uppercase tracking-[0.4em] text-[#003057]">idox</span>
-            <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-sky-600">Geospatial Intelligence Standard</span>
-          </div>
-        </div>
-        <div className="flex flex-wrap justify-center gap-12 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">
-          <button className="hover:text-sky-600 transition-colors">Governance Policy</button>
-          <button className="hover:text-sky-600 transition-colors">Internal Support</button>
-          <button className="hover:text-emerald-600 transition-colors flex items-center gap-3">
-            System Online <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
-          </button>
-        </div>
-      </footer>
     </div>
   );
 }
