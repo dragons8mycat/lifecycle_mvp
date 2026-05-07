@@ -222,6 +222,7 @@ function sheetTableToObjects(table) {
 }
 
 function normaliseDataset(input, index = 0) {
+  const source = normalizeValue(input.source || input.Source);
   const status = normalizeStatus(
     input.status || input.Status || input['Source Status'] || input['Source/Status'] || input.catalogueStatus,
   );
@@ -288,6 +289,11 @@ function normaliseDataset(input, index = 0) {
       normalizeValue(input.description || input.Description || input['Usage Summary']) ||
       'Governed geospatial record managed for lifecycle use across products and project stages.',
     coverage: normalizeValue(input.coverage || input.Coverage) || 'Not stated',
+    source,
+    isClientOnly:
+      Boolean(input.isClientOnly) ||
+      source.toLowerCase().includes('client data') ||
+      normalizeValue(input.clientSpecific || input.client_only || input.clientOnly).toLowerCase() === 'yes',
     status,
     openProprietary,
     usage,
@@ -601,6 +607,7 @@ function OverviewPage({ datasets, onOpenRole }) {
 }
 
 function SalesWorkspace({ datasets }) {
+  const visibleDatasets = useMemo(() => datasets.filter((dataset) => !dataset.isClientOnly), [datasets]);
   const industries = Object.keys(INDUSTRY_STAGES);
   const MATRIX_ROLE_OPTIONS = [
     { value: 'all', label: 'All' },
@@ -625,17 +632,17 @@ function SalesWorkspace({ datasets }) {
   const stages = INDUSTRY_STAGES[industry];
   const families = useMemo(
     () =>
-      Array.from(
-        new Set(
-          getDatasetsForIndustry(datasets, industry, { search, availability }).map((dataset) => dataset.group),
+          Array.from(
+            new Set(
+          getDatasetsForIndustry(visibleDatasets, industry, { search, availability }).map((dataset) => dataset.group),
         ),
       ).sort(),
-    [availability, datasets, industry, search],
+    [availability, industry, search, visibleDatasets],
   );
 
   const filteredDatasets = useMemo(
-    () => getDatasetsForIndustry(datasets, industry, { search, availability, dataGroup }),
-    [availability, dataGroup, datasets, industry, search],
+    () => getDatasetsForIndustry(visibleDatasets, industry, { search, availability, dataGroup }),
+    [availability, dataGroup, industry, search, visibleDatasets],
   );
   const stageScopedDatasets = useMemo(
     () => filteredDatasets.filter((dataset) => Boolean(getUsageForIndustryStage(dataset, industry, selectedStage))),
@@ -1121,6 +1128,7 @@ function SalesWorkspace({ datasets }) {
 }
 
 function CatalogueWorkspace({ datasets, onSync }) {
+  const [showClientData, setShowClientData] = useState(false);
   const [industry, setIndustry] = useState('Housing');
   const [search, setSearch] = useState('');
   const [dataGroup, setDataGroup] = useState('all');
@@ -1138,10 +1146,14 @@ function CatalogueWorkspace({ datasets, onSync }) {
   const [editUnlocked, setEditUnlocked] = useState(false);
   const [drafts, setDrafts] = useState({});
 
-  const groups = useMemo(() => Array.from(new Set(datasets.map((dataset) => dataset.group))).sort(), [datasets]);
+  const catalogueDatasets = useMemo(
+    () => datasets.filter((dataset) => showClientData || !dataset.isClientOnly),
+    [datasets, showClientData],
+  );
+  const groups = useMemo(() => Array.from(new Set(catalogueDatasets.map((dataset) => dataset.group))).sort(), [catalogueDatasets]);
 
   const filteredDatasets = useMemo(() => {
-    const records = datasets.filter((dataset) => {
+    const records = catalogueDatasets.filter((dataset) => {
       const haystack = [
         dataset.commonName,
         dataset.rawName,
@@ -1167,7 +1179,7 @@ function CatalogueWorkspace({ datasets, onSync }) {
       if (sortBy === 'status') return left.status.localeCompare(right.status) || left.commonName.localeCompare(right.commonName);
       return left.commonName.localeCompare(right.commonName);
     });
-  }, [accessFilter, dataGroup, datasets, search, sortBy, stage, statusFilter, unit]);
+  }, [accessFilter, catalogueDatasets, dataGroup, search, sortBy, stage, statusFilter, unit]);
 
   const selectedDataset = useMemo(
     () => filteredDatasets.find((dataset) => dataset.id === selectedId) || filteredDatasets[0] || null,
@@ -1249,6 +1261,15 @@ function CatalogueWorkspace({ datasets, onSync }) {
               {syncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
               {syncing ? 'Syncing data' : 'Data sync'}
             </button>
+            <button
+              type="button"
+              onClick={() => setShowClientData((current) => !current)}
+              className={`inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-black uppercase tracking-[0.16em] ${
+                showClientData ? 'border-brand-orange bg-orange-50 text-brand-orange' : 'border-slate-200 bg-white text-slate-700'
+              }`}
+            >
+              {showClientData ? 'Hide client data' : 'Show client data'}
+            </button>
             <button type="button" onClick={requestEditMode} className={`inline-flex items-center gap-2 rounded-full border px-5 py-2.5 text-sm font-black uppercase tracking-[0.16em] ${editUnlocked ? 'border-brand-orange bg-orange-50 text-brand-orange' : 'border-slate-200 bg-white text-slate-700'}`}>
               <LockKeyhole size={15} />
               {editUnlocked ? 'Lock editing' : 'Edit mode'}
@@ -1312,7 +1333,10 @@ function CatalogueWorkspace({ datasets, onSync }) {
           <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <div className="text-[11px] font-black uppercase tracking-[0.24em] text-brand-blue">Catalogue records</div>
-              <div className="mt-2 text-sm text-slate-500">Wider records table with access type, company ownership, and governance filters.</div>
+              <div className="mt-2 text-sm text-slate-500">
+                Wider records table with access type, company ownership, and governance filters.
+                {!showClientData ? ' Client-only records are hidden by default.' : ' Client-only records are currently visible.'}
+              </div>
             </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <FilterField label="Access type" compact>
@@ -1730,13 +1754,15 @@ export default function App() {
         name: dataset.rawName,
         commonName: dataset.commonName,
         group: dataset.group,
-        businessUnit: dataset.businessUnit,
-        supplier: dataset.supplier,
-        description: dataset.description,
-        coverage: dataset.coverage,
-        status: dataset.status,
-        openProprietary: dataset.openProprietary,
-        usage: stageUsageByDataId[normalizeValue(row.data_id)]?.usage || {},
+                businessUnit: dataset.businessUnit,
+                supplier: dataset.supplier,
+                description: dataset.description,
+                coverage: dataset.coverage,
+                source: dataset.source,
+                isClientOnly: dataset.isClientOnly,
+                status: dataset.status,
+                openProprietary: dataset.openProprietary,
+                usage: stageUsageByDataId[normalizeValue(row.data_id)]?.usage || {},
         industryUsage: stageUsageByDataId[normalizeValue(row.data_id)]?.industryUsage || {},
         updatedAt: serverTimestamp(),
       });
