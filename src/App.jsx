@@ -795,28 +795,44 @@ function SalesWorkspace({ datasets }) {
           </div>
         </div>
         <div className="mt-4 border-t border-slate-100 pt-4">
-          <div className="mb-2 block text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Current stage</div>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="block text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Current stage</div>
+            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+              Selected: {selectedStage}
+            </div>
+          </div>
           <div className="overflow-x-auto pb-1">
-            <div className="grid min-w-[1180px] gap-2 xl:min-w-0" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }}>
+            <div
+              className="grid min-w-[1120px] gap-[3px] xl:min-w-0"
+              style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }}
+            >
               {stages.map((stage, index) => (
                 <button
                   key={stage}
                   type="button"
                   onClick={() => setSelectedStage(stage)}
-                  className={`min-w-0 px-5 py-3 text-left transition ${
-                    stage === selectedStage ? 'bg-brand-blue text-white shadow-sm' : 'bg-slate-50 text-brand-heading hover:bg-sky-50'
+                  className={`min-h-[92px] min-w-0 px-4 py-3 text-left transition md:px-5 md:py-4 ${
+                    stage === selectedStage
+                      ? 'bg-gradient-to-br from-brand-blue to-brand-heading text-white shadow-[0_12px_32px_rgba(21,96,130,0.22)]'
+                      : 'bg-white text-brand-heading hover:bg-sky-50'
                   }`}
                   style={{
                     clipPath:
                       index === stages.length - 1
-                        ? 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 12px 50%)'
-                        : 'polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%, 12px 50%)',
+                        ? 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 14px 50%)'
+                        : 'polygon(0 0, calc(100% - 18px) 0, 100% 50%, calc(100% - 18px) 100%, 0 100%, 14px 50%)',
                   }}
                 >
-                  <div className={`text-[10px] font-black uppercase tracking-[0.18em] ${stage === selectedStage ? 'text-white/70' : 'text-slate-500'}`}>
+                  <div
+                    className={`text-[9px] font-black uppercase tracking-[0.22em] ${
+                      stage === selectedStage ? 'text-white/70' : 'text-slate-400'
+                    }`}
+                  >
                     Stage {index + 1}
                   </div>
-                  <div className="mt-1 text-sm font-black">{stage}</div>
+                  <div className={`mt-2 text-[13px] font-black leading-[1.25] md:text-sm ${stage === selectedStage ? 'text-white' : 'text-brand-heading'}`}>
+                    {stage}
+                  </div>
                 </button>
               ))}
             </div>
