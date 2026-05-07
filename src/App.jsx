@@ -13,6 +13,7 @@ import { getAuth, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
 import {
   AlertTriangle,
   ArrowRight,
+  ArrowUpDown,
   BarChart3,
   CheckCircle2,
   Database,
@@ -88,6 +89,16 @@ function normalizeStageName(value) {
   return normalizeValue(value).replace(/\s+/g, ' ');
 }
 
+function normalizeIndustryName(value) {
+  const raw = normalizeValue(value).toLowerCase();
+  if (raw === 'onshore wind') return 'Onshore Wind';
+  if (raw === 'offshore wind') return 'Offshore Wind';
+  if (raw === 'housing') return 'Housing';
+  if (raw === 'solar') return 'Solar';
+  if (raw === 'fibre') return 'Fibre';
+  return normalizeValue(value);
+}
+
 function normalizeStatus(rawValue) {
   const raw = normalizeValue(rawValue).toLowerCase();
   if (raw.includes('product')) return 'product';
@@ -121,6 +132,13 @@ function normalizeUsageValue(rawValue) {
   if (raw === 'd' || raw.includes('descriptive') || raw.includes('context')) return 'D';
   if (raw === 'u' || raw === '?' || raw.includes('unknown')) return 'U';
   return '';
+}
+
+function mergeRoleValue(currentRole, nextRole) {
+  const rolePriority = { A: 4, B: 3, D: 2, U: 1 };
+  if (!currentRole) return nextRole;
+  if (!nextRole) return currentRole;
+  return (rolePriority[nextRole] || 0) > (rolePriority[currentRole] || 0) ? nextRole : currentRole;
 }
 
 function parseCsv(text) {
@@ -226,23 +244,41 @@ function normaliseDataset(input, index = 0) {
 
   const usage = {};
   const knownStages = new Set(Object.values(INDUSTRY_STAGES).flat().map(normalizeStageName));
+  const industryUsage = {};
+  if (input.industryUsage && typeof input.industryUsage === 'object') {
+    Object.entries(input.industryUsage).forEach(([industryName, stageMap]) => {
+      const normalizedIndustry = normalizeIndustryName(industryName);
+      if (!normalizedIndustry || !stageMap || typeof stageMap !== 'object') return;
+      industryUsage[normalizedIndustry] = {};
+      Object.entries(stageMap).forEach(([stageName, roleValue]) => {
+        const normalizedStageName = normalizeStageName(stageName);
+        if (!knownStages.has(normalizedStageName)) return;
+        const marker = normalizeUsageValue(roleValue);
+        if (marker) {
+          industryUsage[normalizedIndustry][normalizedStageName] = marker;
+          usage[normalizedStageName] = mergeRoleValue(usage[normalizedStageName], marker);
+        }
+      });
+    });
+  }
   if (input.usage && typeof input.usage === 'object') {
     Object.entries(input.usage).forEach(([stageName, roleValue]) => {
       const normalizedStageName = normalizeStageName(stageName);
       if (!knownStages.has(normalizedStageName)) return;
       const marker = normalizeUsageValue(roleValue);
-      if (marker) usage[normalizedStageName] = marker;
+      if (marker) usage[normalizedStageName] = mergeRoleValue(usage[normalizedStageName], marker);
     });
   }
   Object.entries(input || {}).forEach(([key, value]) => {
     const normalizedStageName = normalizeStageName(key);
     if (!knownStages.has(normalizedStageName)) return;
     const marker = normalizeUsageValue(value);
-    if (marker) usage[normalizedStageName] = marker;
+    if (marker) usage[normalizedStageName] = mergeRoleValue(usage[normalizedStageName], marker);
   });
 
   return {
     id: input.id || `dataset-${index}`,
+    sourceDataId: normalizeValue(input.sourceDataId || input.data_id),
     rawName: normalizeValue(input.name || input.Name || input.Dataset || input.Dataset_Name),
     commonName: normalizeValue(input.commonName || input['Common Name'] || input.common_name) || 'Untitled dataset',
     group: normalizeValue(input.group || input.Group || input['Data Group']) || 'General',
@@ -255,7 +291,11 @@ function normaliseDataset(input, index = 0) {
     status,
     openProprietary,
     usage,
-    stageCount: Object.keys(usage).length,
+    industryUsage,
+    stageCount:
+      Object.keys(industryUsage).length > 0
+        ? new Set(Object.values(industryUsage).flatMap((stageMap) => Object.keys(stageMap))).size
+        : Object.keys(usage).length,
     updatedAt: input.updatedAt || null,
   };
 }
@@ -284,7 +324,7 @@ function statusLabel(status) {
 function getDatasetsForIndustry(datasets, industry, filters = {}) {
   const stages = INDUSTRY_STAGES[industry] || [];
   return datasets.filter((dataset) => {
-    const touchesIndustry = stages.some((stage) => dataset.usage?.[stage]);
+    const touchesIndustry = stages.some((stage) => getUsageForIndustryStage(dataset, industry, stage));
     if (!touchesIndustry) return false;
 
     const haystack = [
@@ -313,12 +353,22 @@ function getDatasetsForIndustry(datasets, industry, filters = {}) {
   });
 }
 
-function getStageEntries(datasets, stage) {
+function getUsageForIndustryStage(dataset, industry, stage) {
+  const normalizedIndustry = normalizeIndustryName(industry);
+  const normalizedStage = normalizeStageName(stage);
+  return dataset.industryUsage?.[normalizedIndustry]?.[normalizedStage] || dataset.usage?.[normalizedStage] || '';
+}
+
+function getIndustryStagesUsed(dataset, industry) {
+  return (INDUSTRY_STAGES[industry] || []).filter((stageName) => Boolean(getUsageForIndustryStage(dataset, industry, stageName)));
+}
+
+function getStageEntries(datasets, industry, stage) {
   return datasets
-    .filter((dataset) => dataset.usage?.[stage])
+    .filter((dataset) => getUsageForIndustryStage(dataset, industry, stage))
     .map((dataset) => ({
       dataset,
-      role: dataset.usage[stage],
+      role: getUsageForIndustryStage(dataset, industry, stage),
     }));
 }
 
@@ -588,47 +638,58 @@ function SalesWorkspace({ datasets }) {
     [availability, dataGroup, datasets, industry, search],
   );
   const stageScopedDatasets = useMemo(
-    () => filteredDatasets.filter((dataset) => Boolean(dataset.usage?.[selectedStage])),
-    [filteredDatasets, selectedStage],
+    () => filteredDatasets.filter((dataset) => Boolean(getUsageForIndustryStage(dataset, industry, selectedStage))),
+    [filteredDatasets, industry, selectedStage],
   );
-  const roleScopedDatasets = useMemo(
+  const roleLedDatasets = useMemo(
     () =>
       roleFilter === 'all'
         ? stageScopedDatasets
-        : stageScopedDatasets.filter((dataset) => dataset.usage?.[selectedStage] === roleFilter),
-    [roleFilter, selectedStage, stageScopedDatasets],
+        : stageScopedDatasets.filter((dataset) => getUsageForIndustryStage(dataset, industry, selectedStage) === roleFilter),
+    [industry, roleFilter, selectedStage, stageScopedDatasets],
   );
-  const sortedScopedDatasets = useMemo(() => {
+  const sortedRoleLedDatasets = useMemo(() => {
     const roleScore = { A: 4, B: 3, D: 2, U: 1 };
 
-    return [...roleScopedDatasets].sort((left, right) => {
+    return [...roleLedDatasets].sort((left, right) => {
       if (salesSort === 'alpha-desc') {
         return right.commonName.localeCompare(left.commonName);
       }
       if (salesSort === 'alpha-asc') {
         return left.commonName.localeCompare(right.commonName);
       }
-      const leftScore = roleScore[left.usage?.[selectedStage]] || 0;
-      const rightScore = roleScore[right.usage?.[selectedStage]] || 0;
+      const leftScore = roleScore[getUsageForIndustryStage(left, industry, selectedStage)] || 0;
+      const rightScore = roleScore[getUsageForIndustryStage(right, industry, selectedStage)] || 0;
       return rightScore - leftScore || left.commonName.localeCompare(right.commonName);
     });
-  }, [roleScopedDatasets, salesSort, selectedStage]);
+  }, [industry, roleLedDatasets, salesSort, selectedStage]);
+  const sortedTouchpointDatasets = useMemo(() => {
+    return [...filteredDatasets].sort((left, right) => {
+      if (salesSort === 'alpha-desc') {
+        return right.commonName.localeCompare(left.commonName);
+      }
+      if (salesSort === 'alpha-asc') {
+        return left.commonName.localeCompare(right.commonName);
+      }
+      return right.stageCount - left.stageCount || left.commonName.localeCompare(right.commonName);
+    });
+  }, [filteredDatasets, salesSort]);
   const stageEntries = useMemo(() => {
-    return getStageEntries(sortedScopedDatasets, selectedStage);
-  }, [selectedStage, sortedScopedDatasets]);
+    return getStageEntries(sortedRoleLedDatasets, industry, selectedStage);
+  }, [industry, selectedStage, sortedRoleLedDatasets]);
   const matrixDatasets = useMemo(
     () =>
-      sortedScopedDatasets.filter((dataset) =>
+      sortedTouchpointDatasets.filter((dataset) =>
         stages.every((stageName) => {
           const filterValue = matrixRoleFilters[stageName] || 'all';
           if (filterValue === 'all') return true;
-          const usageValue = dataset.usage?.[stageName] || '';
+          const usageValue = getUsageForIndustryStage(dataset, industry, stageName);
           if (filterValue === 'used') return Boolean(usageValue);
           if (filterValue === 'none') return !usageValue;
           return usageValue === filterValue;
         }),
       ),
-    [matrixRoleFilters, sortedScopedDatasets, stages],
+    [industry, matrixRoleFilters, sortedTouchpointDatasets, stages],
   );
   const primaryEntries = stageEntries.filter((entry) => entry.role !== 'U');
   const weakEntries = stageEntries.filter((entry) => entry.role === 'U');
@@ -707,11 +768,11 @@ function SalesWorkspace({ datasets }) {
             <div className="text-sm font-semibold text-brand-heading">{industry} lifecycle stages</div>
             <div className="text-xs text-slate-500">
               The selected stage stays visible while you scan the view.
-              {roleFilter !== 'all' ? ` Filtered to ${roleLabel(roleFilter).toLowerCase()} records at this stage.` : ''}
+              {viewMode === 'role-led' && roleFilter !== 'all' ? ` Filtered to ${roleLabel(roleFilter).toLowerCase()} records at this stage.` : ''}
             </div>
           </div>
           <div className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-            {(viewMode === 'touchpoint' ? matrixDatasets : sortedScopedDatasets).length} datasets in current view
+            {(viewMode === 'touchpoint' ? matrixDatasets : sortedRoleLedDatasets).length} datasets in current view
           </div>
         </div>
         <div className="mt-4 border-t border-slate-100 pt-4">
@@ -802,7 +863,8 @@ function SalesWorkspace({ datasets }) {
               salesSort={salesSort}
               setSalesSort={setSalesSort}
               className="mt-5"
-              showSearch={false}
+              showRoleFilter={false}
+              priorityLabel="Most touchpoints"
             />
           </div>
           <div className="overflow-x-auto">
@@ -861,7 +923,7 @@ function SalesWorkspace({ datasets }) {
                       {stages.map((stage) => (
                         <td key={stage} className={`px-4 py-4 text-center ${stage === selectedStage ? 'bg-orange-50/50' : ''}`}>
                           <div className="inline-flex min-w-20 justify-center">
-                            <UsageMarker value={dataset.usage?.[stage]} />
+                            <UsageMarker value={getUsageForIndustryStage(dataset, industry, stage)} />
                           </div>
                         </td>
                       ))}
@@ -902,6 +964,7 @@ function SalesWorkspace({ datasets }) {
                 salesSort={salesSort}
                 setSalesSort={setSalesSort}
                 className="mt-5"
+                priorityLabel="Role priority"
               />
             </ShellCard>
 
@@ -1026,7 +1089,7 @@ function SalesWorkspace({ datasets }) {
                   <div>
                     <dt className="font-semibold text-slate-500">Lifecycle stages where it appears</dt>
                     <dd className="mt-1">
-                      {stages.filter((stage) => selectedRecord.dataset.usage?.[stage]).join(', ') || 'No other mapped stages'}
+                      {getIndustryStagesUsed(selectedRecord.dataset, industry).join(', ') || 'No other mapped stages'}
                     </dd>
                   </div>
                 </dl>
@@ -1399,6 +1462,7 @@ function DetailItem({ label, value }) {
 function SalesControlBar({
   search,
   setSearch,
+  searchLabel = 'Search datasets',
   availability,
   setAvailability,
   dataGroup,
@@ -1410,20 +1474,44 @@ function SalesControlBar({
   setSalesSort,
   className = '',
   showSearch = true,
+  showRoleFilter = true,
+  sortLabel = 'Sort',
+  priorityLabel = 'Role priority',
 }) {
+  const gridClass = showSearch
+    ? showRoleFilter
+      ? 'xl:grid-cols-[1.8fr_repeat(3,minmax(0,1fr))]'
+      : 'xl:grid-cols-[1.8fr_repeat(2,minmax(0,1fr))]'
+    : showRoleFilter
+      ? 'xl:grid-cols-4'
+      : 'xl:grid-cols-3';
+
   return (
     <div className={`grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50/90 p-4 ${className}`}>
-      <div className={`grid gap-4 ${showSearch ? 'xl:grid-cols-[1.6fr_repeat(4,minmax(0,1fr))]' : 'xl:grid-cols-4'}`}>
+      <div className={`grid gap-4 ${gridClass}`}>
         {showSearch ? (
-          <FilterField label="Data common name">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                className="field-control pl-10"
-                placeholder="Search datasets, suppliers, raw names, or descriptions"
-              />
+          <FilterField label={searchLabel}>
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  className="field-control pl-10"
+                  placeholder="Search datasets, suppliers, raw names, or descriptions"
+                />
+              </div>
+              <div className="w-full sm:w-56">
+                <label className="sr-only">{sortLabel}</label>
+                <div className="relative">
+                  <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                  <select value={salesSort} onChange={(event) => setSalesSort(event.target.value)} className="field-control pl-9">
+                    <option value="role-priority">{priorityLabel}</option>
+                    <option value="alpha-asc">Alphabetical A-Z</option>
+                    <option value="alpha-desc">Alphabetical Z-A</option>
+                  </select>
+                </div>
+              </div>
             </div>
           </FilterField>
         ) : null}
@@ -1437,9 +1525,9 @@ function SalesControlBar({
             <option value="not-productised">Not productised</option>
           </select>
         </FilterField>
-        <FilterField label="Data group">
+        <FilterField label="Data theme">
           <select value={dataGroup} onChange={(event) => setDataGroup(event.target.value)} className="field-control">
-            <option value="all">All data groups</option>
+            <option value="all">All themes</option>
             {families.map((option) => (
               <option key={option} value={option}>
                 {option}
@@ -1447,22 +1535,17 @@ function SalesControlBar({
             ))}
           </select>
         </FilterField>
-        <FilterField label="Stage role">
-          <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="field-control">
-            <option value="all">All roles</option>
-            <option value="A">Analytical</option>
-            <option value="B">Basemapping</option>
-            <option value="D">Descriptive / contextual</option>
-            <option value="U">Unknown / needs classification</option>
-          </select>
-        </FilterField>
-        <FilterField label="Sort">
-          <select value={salesSort} onChange={(event) => setSalesSort(event.target.value)} className="field-control">
-            <option value="role-priority">Role priority</option>
-            <option value="alpha-asc">Alphabetical A-Z</option>
-            <option value="alpha-desc">Alphabetical Z-A</option>
-          </select>
-        </FilterField>
+        {showRoleFilter ? (
+          <FilterField label="Stage role">
+            <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="field-control">
+              <option value="all">All roles</option>
+              <option value="A">Analytical</option>
+              <option value="B">Basemapping</option>
+              <option value="D">Descriptive / contextual</option>
+              <option value="U">Unknown / needs classification</option>
+            </select>
+          </FilterField>
+        ) : null}
       </div>
     </div>
   );
@@ -1594,16 +1677,21 @@ export default function App() {
 
     const stageUsageByDataId = stageRows.reduce((accumulator, row) => {
       const dataId = normalizeValue(row.data_id);
+      const industryName = normalizeIndustryName(row.project_type);
       const stageName = normalizeStageName(row.stage_name);
       const usedInStage = normalizeValue(row.used_in_stage).toLowerCase();
       const roleCode = normalizeUsageValue(row.role_code || row.stage_data_role);
 
-      if (!dataId || !stageName || usedInStage !== 'yes' || !roleCode) {
+      if (!dataId || !industryName || !stageName || usedInStage !== 'yes' || !roleCode) {
         return accumulator;
       }
 
-      if (!accumulator[dataId]) accumulator[dataId] = {};
-      accumulator[dataId][stageName] = roleCode;
+      if (!accumulator[dataId]) accumulator[dataId] = { usage: {}, industryUsage: {} };
+      if (!accumulator[dataId].industryUsage[industryName]) {
+        accumulator[dataId].industryUsage[industryName] = {};
+      }
+      accumulator[dataId].industryUsage[industryName][stageName] = roleCode;
+      accumulator[dataId].usage[stageName] = mergeRoleValue(accumulator[dataId].usage[stageName], roleCode);
       return accumulator;
     }, {});
 
@@ -1613,13 +1701,16 @@ export default function App() {
       const dataset = normaliseDataset(
         {
           ...row,
-          usage: stageUsageByDataId[normalizeValue(row.data_id)] || {},
+          sourceDataId: normalizeValue(row.data_id),
+          usage: stageUsageByDataId[normalizeValue(row.data_id)]?.usage || {},
+          industryUsage: stageUsageByDataId[normalizeValue(row.data_id)]?.industryUsage || {},
         },
         index,
       );
       if (!dataset.rawName && !dataset.commonName) return;
       const ref = doc(db, 'artifacts', appId, 'public', 'data', 'datasets', `ds-${index}`);
       batch.set(ref, {
+        sourceDataId: dataset.sourceDataId || normalizeValue(row.data_id),
         name: dataset.rawName,
         commonName: dataset.commonName,
         group: dataset.group,
@@ -1629,7 +1720,8 @@ export default function App() {
         coverage: dataset.coverage,
         status: dataset.status,
         openProprietary: dataset.openProprietary,
-        usage: stageUsageByDataId[normalizeValue(row.data_id)] || {},
+        usage: stageUsageByDataId[normalizeValue(row.data_id)]?.usage || {},
+        industryUsage: stageUsageByDataId[normalizeValue(row.data_id)]?.industryUsage || {},
         updatedAt: serverTimestamp(),
       });
     });
